@@ -8,7 +8,7 @@ Beautiful web frontend + FastAPI backend powered by **AWS Bedrock** (Claude Sonn
 |-------|-----------|
 | Frontend | Vanilla HTML/CSS/JS (no framework, zero build step) |
 | Backend | FastAPI + Uvicorn |
-| AI | AWS Bedrock — `anthropic.claude-sonnet-4-6` |
+| AI | AWS Bedrock — `anthropic.claude-haiku-3` |
 | Profiling | pandas + numpy (pure local, no AI cost) |
 
 ## User flow (5 steps)
