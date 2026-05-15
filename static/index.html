@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ML Recommender</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --t1: rgba(255,255,255,0.93);
+  --t2: rgba(255,255,255,0.62);
+  --t3: rgba(255,255,255,0.38);
+
+  --accent:   #818cf8;
+  --accent-d: #6366f1;
+  --purple:   #c084fc;
+  --purple-d: #a855f7;
+  --cyan:     #22d3ee;
+  --teal:     #2dd4bf;
+  --teal-d:   #0d9488;
+  --amber:    #fbbf24;
+  --red:      #f87171;
+  --red-d:    #ef4444;
+  --green:    #34d399;
+  --green-d:  #059669;
+
+  --g0: rgba(255,255,255,0.06);
+  --g1: rgba(255,255,255,0.10);
+  --g2: rgba(255,255,255,0.15);
+  --gb: rgba(255,255,255,0.14);
+  --gb2: rgba(255,255,255,0.24);
+
+  --grad:      linear-gradient(135deg, var(--accent-d) 0%, var(--purple-d) 100%);
+  --grad-teal: linear-gradient(135deg, var(--teal-d), #0891b2);
+
+  --r: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --topbar-h: 70px;
+}
+
+body {
+  font-family: var(--sans);
+  background: #100c28;
+  color: var(--t1);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Background orbs ── */
+.orb {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+.orb-1 {
+  width: 800px; height: 800px;
+  background: radial-gradient(circle, rgba(99,102,241,0.35) 0%, transparent 68%);
+  top: -350px; left: -250px;
+  animation: orb1 24s ease-in-out infinite alternate;
+}
+.orb-2 {
+  width: 650px; height: 650px;
+  background: radial-gradient(circle, rgba(168,85,247,0.28) 0%, transparent 68%);
+  bottom: -250px; right: -180px;
+  animation: orb2 30s ease-in-out infinite alternate;
+}
+.orb-3 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(6,182,212,0.18) 0%, transparent 68%);
+  top: 45%; left: 45%;
+  animation: orb1 19s ease-in-out infinite alternate-reverse;
+}
+@keyframes orb1 { from { transform: translate(0,0) scale(1); } to { transform: translate(50px,35px) scale(1.06); } }
+@keyframes orb2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-40px,-45px) scale(1.04); } }
+
+/* ── Topbar ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(16,12,40,0.82);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; font-size: 15px; color: var(--t1);
+  letter-spacing: -0.01em;
+}
+.logo-gem {
+  width: 30px; height: 30px; border-radius: 9px;
+  background: var(--grad);
+  box-shadow: 0 0 18px rgba(99,102,241,0.65), 0 0 40px rgba(168,85,247,0.3);
+  flex-shrink: 0;
+}
+#hdr-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t3);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 4px 14px;
+  border-radius: 99px;
+}
+
+/* ── Main ── */
+main {
+  position: relative; z-index: 5;
+  display: flex; justify-content: center;
+  padding: 2.5rem 1.5rem 5rem;
+  min-height: calc(100vh - 66px);
+}
+
+/* ── Wizard card ── */
+.wizard-card {
+  width: 100%; max-width: 880px;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: var(--r-xl);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 40px 80px rgba(0,0,0,0.45),
+    0 0 120px rgba(99,102,241,0.10);
+  overflow: clip; /* clip visually without creating scroll container — keeps sticky children working */
+  height: fit-content;
+}
+
+/* ── Wizard header (steps) ── */
+.wizard-header {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 20;
+  padding: 1.5rem 2rem 1.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  background: rgba(16,12,40,0.75);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+.steps-track {
+  display: flex;
+  align-items: center;
+}
+.step-item {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex-shrink: 0; cursor: default;
+}
+.step-item.clickable { cursor: pointer; }
+.step-item.clickable:hover .step-num-w {
+  border-color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.09);
+}
+.step-num-w {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; font-family: var(--mono);
+  background: rgba(255,255,255,0.05);
+  color: var(--t3);
+  border: 1.5px solid rgba(255,255,255,0.10);
+  transition: all .28s;
+}
+.step-item.active .step-num-w {
+  background: var(--grad); color: #fff; border: none;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.2), 0 4px 18px rgba(99,102,241,0.45);
+}
+.step-item.done .step-num-w {
+  background: linear-gradient(135deg, var(--teal), var(--green));
+  color: #fff; border: none;
+  box-shadow: 0 4px 14px rgba(45,212,191,0.38);
+}
+.step-label {
+  font-size: 11px; font-weight: 500; color: var(--t3);
+  white-space: nowrap; transition: color .25s;
+}
+.step-item.active .step-label { color: var(--accent); font-weight: 600; }
+.step-item.done .step-label   { color: var(--teal); }
+
+.step-connector {
+  flex: 1; height: 1.5px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 10px;
+  margin-bottom: 22px;
+}
+
+/* File info strip */
+.sbi {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 1rem; padding: .5rem 1rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  font-size: 12px; font-family: var(--mono);
+}
+.sbi-val  { color: var(--t2); }
+.sbi-dot  { color: var(--t3); }
+
+/* ── Wizard body ── */
+.wizard-body { padding: 2rem 2rem 2.5rem; }
+
+/* ── Hidden ── */
+.hidden { display: none !important; }
+
+/* ── Error / alerts ── */
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: var(--r);
+  font-size: 13px;
+  margin-bottom: 1.5rem;
+}
+.alert-error {
+  background: rgba(239,68,68,0.10);
+  border: 1px solid rgba(239,68,68,0.30);
+  color: var(--red);
+  display: none;
+}
+.alert-success {
+  background: rgba(52,211,153,0.08);
+  border: 1px solid rgba(52,211,153,0.22);
+  color: var(--green);
+}
+
+/* ── Typography ── */
+.page-title {
+  font-size: 2rem; font-weight: 700;
+  letter-spacing: -0.025em; line-height: 1.2;
+  margin-bottom: .375rem;
+  background: linear-gradient(135deg, var(--t1) 0%, rgba(255,255,255,0.55) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.page-sub { font-size: 13px; color: var(--t3); margin-bottom: 2rem; }
+
+.section-label {
+  font-size: 10px; font-weight: 600; color: var(--t3);
+  letter-spacing: .12em; text-transform: uppercase;
+  margin-bottom: .875rem; font-family: var(--mono);
+  display: flex; align-items: center; gap: 10px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.07); }
+
+.divider { height: 1px; background: rgba(255,255,255,0.07); margin: 1.75rem 0; }
+
+/* ── Upload zone ── */
+.upload-zone {
+  border-radius: var(--r-lg); padding: 3.5rem 2rem; text-align: center;
+  background: var(--g0);
+  border: 1.5px dashed rgba(255,255,255,0.14);
+  transition: all .25s;
+}
+.upload-zone.drag {
+  background: rgba(99,102,241,0.08);
+  border-color: var(--accent);
+  border-style: solid;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.1), 0 0 50px rgba(99,102,241,0.12);
+}
+.upload-zone.has-file {
+  background: rgba(45,212,191,0.06);
+  border-color: rgba(45,212,191,0.38);
+  border-style: solid;
+}
+.upload-zone h3 { font-size: 16px; font-weight: 600; margin-bottom: .35rem; color: var(--t1); }
+.upload-zone p  { font-size: 13px; color: var(--t3); }
+.upload-zone.has-file h3 { color: var(--teal); }
+#file-input { display: none; }
+
+/* ── Form ── */
+.field-group { margin-top: 1.5rem; }
+.field-label {
+  font-size: 12px; font-weight: 500; color: var(--t2);
+  margin-bottom: .5rem; display: flex; align-items: center; gap: 6px;
+}
+.badge {
+  font-family: var(--mono); font-size: 10px;
+  background: rgba(255,255,255,0.06); color: var(--t3);
+  padding: 2px 8px; border-radius: 99px;
+  border: 1px solid rgba(255,255,255,0.09);
+}
+textarea {
+  width: 100%; border: 1.5px solid rgba(255,255,255,0.09);
+  border-radius: var(--r); padding: .875rem 1rem;
+  font-family: var(--mono); font-size: 12px; color: var(--t1);
+  background: rgba(255,255,255,0.04); resize: vertical; min-height: 100px;
+  outline: none; transition: border .15s, box-shadow .15s; line-height: 1.7;
+}
+textarea:focus {
+  border-color: rgba(99,102,241,0.5);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+textarea::placeholder { color: var(--t3); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 20px; border-radius: var(--r);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .18s; color: var(--t1);
+}
+.btn:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.2); }
+.btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+.btn-primary {
+  background: var(--grad); color: #fff; border: none;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.42);
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 28px rgba(99,102,241,0.58);
+  transform: translateY(-1px);
+}
+.btn-ghost {
+  background: transparent; border-color: transparent; color: var(--t3);
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.05); color: var(--t2); border-color: transparent; }
+.btn-row { display: flex; align-items: center; gap: 10px; margin-top: 1.5rem; flex-wrap: wrap; }
+.btn-upload {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 1rem; padding: 10px 20px; border-radius: var(--r);
+  border: 1.5px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .18s; color: var(--t1);
+}
+.btn-upload:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.24); }
+
+/* ── Stats grid ── */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  margin-bottom: 1.75rem;
+}
+.stat-card {
+  background: var(--g0); border: 1px solid var(--gb);
+  border-radius: var(--r); padding: 1rem;
+  position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--grad);
+}
+.stat-label {
+  font-size: 10px; color: var(--t3); font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+}
+.stat-val { font-size: 20px; font-weight: 600; font-family: var(--mono); color: var(--t1); line-height: 1; }
+
+/* ── Table ── */
+.tbl-wrap {
+  background: var(--g0); border: 1px solid var(--gb);
+  border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.75rem;
+}
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  background: rgba(0,0,0,0.22); padding: 10px 14px; text-align: left;
+  font-weight: 600; color: var(--t3); border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 11px; white-space: nowrap; letter-spacing: .02em;
+}
+tbody td {
+  padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-family: var(--mono); color: var(--t2); vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(255,255,255,0.03); }
+
+.type-badge {
+  font-size: 10px; padding: 3px 9px; border-radius: 99px;
+  font-family: var(--mono); display: inline-block; font-weight: 500;
+}
+.type-numeric    { background: rgba(99,102,241,0.15);  color: var(--accent);   border: 1px solid rgba(99,102,241,0.25); }
+.type-categorical{ background: rgba(45,212,191,0.12);  color: var(--teal);     border: 1px solid rgba(45,212,191,0.25); }
+.type-datetime   { background: rgba(251,191,36,0.12);  color: var(--amber);    border: 1px solid rgba(251,191,36,0.25); }
+.type-text       { background: rgba(192,132,252,0.12); color: var(--purple-d); border: 1px solid rgba(192,132,252,0.25); }
+
+.null-bar-wrap { display: flex; align-items: center; gap: 6px; }
+.null-bar { width: 56px; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+.null-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--amber), var(--red)); }
+
+/* ── AI box ── */
+.ai-box {
+  background: var(--g0); border: 1px solid var(--gb);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-lg); padding: 1.25rem 1.5rem;
+  margin-bottom: 1.75rem; min-height: 80px;
+}
+.ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: .875rem; }
+.ai-chip {
+  font-size: 10px; font-family: var(--mono); font-weight: 500;
+  letter-spacing: .02em; background: var(--grad); color: #fff;
+  padding: 3px 10px; border-radius: 99px;
+}
+.ai-text { font-size: 13px; color: var(--t2); line-height: 1.8; white-space: pre-wrap; }
+.cursor {
+  display: inline-block; width: 2px; height: 14px;
+  background: var(--accent); margin-left: 1px;
+  animation: blink 1s step-end infinite; vertical-align: text-bottom;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ── Domain ── */
+.domain-row { display: flex; align-items: center; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.domain-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 18px; border-radius: 99px; background: var(--grad);
+  color: #fff; font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.38);
+}
+.domain-reason { font-size: 12px; color: var(--t3); font-style: italic; }
+
+/* ── Use case cards ── */
+.uc-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 1.75rem; }
+.uc-card {
+  background: var(--g0); border: 1.5px solid var(--gb);
+  border-radius: var(--r-lg); padding: 1.25rem 1.5rem;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: border-color .2s, box-shadow .2s, background .2s, transform .2s;
+}
+.uc-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--grad); opacity: 0; transition: opacity .2s;
+}
+.uc-card:hover {
+  border-color: rgba(99,102,241,0.32); background: var(--g1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+}
+.uc-card:hover::before { opacity: 1; }
+.uc-card.selected {
+  border-color: rgba(99,102,241,0.5);
+  background: rgba(99,102,241,0.08);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.12), 0 8px 32px rgba(0,0,0,0.3);
+}
+.uc-card.selected::before { opacity: 1; }
+
+.uc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .6rem; }
+.uc-title { font-size: 15px; font-weight: 600; color: var(--t1); }
+.uc-score {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  background: var(--grad); color: #fff;
+  padding: 3px 12px; border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.35);
+}
+.uc-meta { font-size: 11px; color: var(--t3); font-family: var(--mono); margin-bottom: .875rem; }
+.uc-desc { font-size: 13px; color: var(--t2); line-height: 1.65; margin-bottom: 1rem; }
+.uc-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; padding: 3px 10px; border-radius: 99px;
+  font-family: var(--mono); font-weight: 500;
+}
+.pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .7; }
+.pill.high { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+.pill.mid  { background: rgba(251,191,36,0.12);  color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.pill.low  { background: rgba(248,113,113,0.12); color: var(--red);   border: 1px solid rgba(248,113,113,0.25); }
+
+.check-icon {
+  position: absolute; top: 14px; right: 16px;
+  width: 22px; height: 22px; background: var(--grad); border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(99,102,241,0.42);
+}
+.uc-card.selected .check-icon { display: flex; }
+.check-icon svg { width: 10px; height: 10px; stroke: #fff; stroke-width: 2.5; fill: none; }
+
+.uc-reasons {
+  display: none; border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: .875rem; padding-top: .875rem;
+}
+.uc-card.selected .uc-reasons { display: block; }
+.reason-row { display: flex; gap: 8px; font-size: 11px; margin-bottom: .35rem; }
+.reason-key { color: var(--t3); font-family: var(--mono); white-space: nowrap; min-width: 130px; }
+.reason-val { color: var(--t2); }
+
+/* ── Code ── */
+.code-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;
+}
+.code-meta-txt { font-size: 12px; color: var(--t3); font-family: var(--mono); }
+.code-wrap {
+  background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.5rem;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.code-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.35);
+}
+.dots { display: flex; gap: 6px; }
+.dots span { width: 12px; height: 12px; border-radius: 50%; }
+pre { padding: 1.5rem; overflow-x: auto; margin: 0; max-height: 540px; }
+code { font-family: var(--mono); font-size: 12.5px; line-height: 1.75; color: #e2e8f0; white-space: pre; }
+.copy-btn {
+  font-size: 11px; font-family: var(--mono); color: var(--t3);
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 6px; padding: 4px 12px; cursor: pointer; transition: all .15s;
+}
+.copy-btn:hover { color: var(--t1); background: rgba(255,255,255,0.10); }
+.copy-btn.ok { color: var(--green); border-color: rgba(52,211,153,0.4); }
+.file-label { font-size: 11px; font-family: var(--mono); color: var(--t3); }
+
+/* ── Misc ── */
+.spinner-wrap {
+  display: flex; align-items: center; gap: 10px;
+  padding: 1.25rem 0; color: var(--t3); font-size: 13px;
+}
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.08);
+  border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Quality report ── */
+.qr-header { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.qr-grade {
+  width: 64px; height: 64px; border-radius: var(--r);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+.qr-grade-letter { font-size: 26px; font-weight: 700; font-family: var(--mono); line-height: 1; }
+.qr-grade-label  { font-size: 10px; font-family: var(--mono); margin-top: 2px; }
+.grade-A { background: rgba(52,211,153,0.12);  color: var(--green);  border: 1.5px solid rgba(52,211,153,0.3); }
+.grade-B { background: rgba(99,102,241,0.12);  color: var(--accent); border: 1.5px solid rgba(99,102,241,0.3); }
+.grade-C { background: rgba(251,191,36,0.12);  color: var(--amber);  border: 1.5px solid rgba(251,191,36,0.3); }
+.grade-D { background: rgba(248,113,113,0.12); color: var(--red);    border: 1.5px solid rgba(248,113,113,0.3); }
+
+.qr-score-block { flex: 1; }
+.qr-score-bar-wrap { height: 6px; background: rgba(255,255,255,0.07); border-radius: 99px; overflow: hidden; margin: 6px 0; }
+.qr-score-bar { height: 100%; border-radius: 99px; transition: width .6s ease; }
+.qr-counts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: .5rem; }
+.sev-pill { font-size: 11px; font-family: var(--mono); padding: 2px 10px; border-radius: 99px; font-weight: 500; }
+.sev-high   { background: rgba(248,113,113,0.12); color: var(--red);   border: 1px solid rgba(248,113,113,0.25); }
+.sev-medium { background: rgba(251,191,36,0.12);  color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+.sev-none   { background: rgba(52,211,153,0.12);  color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+
+.qr-warning-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 1.5rem; }
+.qr-warn-card { border-radius: var(--r); padding: .875rem 1rem; border-left: 3px solid; }
+.qr-warn-high   { background: rgba(248,113,113,0.07); border-color: var(--red); }
+.qr-warn-medium { background: rgba(251,191,36,0.07);  border-color: var(--amber); }
+.qr-warn-low    { background: rgba(99,102,241,0.07);  border-color: var(--accent); }
+.qr-warn-top { display: flex; align-items: center; gap: 8px; margin-bottom: .375rem; }
+.qr-warn-cat { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
+.qr-warn-col { font-size: 12px; font-weight: 600; font-family: var(--mono); color: var(--t1); }
+.qr-warn-msg { font-size: 12px; color: var(--t2); margin-bottom: .25rem; }
+.qr-warn-fix { font-size: 11px; color: var(--t3); font-style: italic; }
+.qr-empty { text-align: center; padding: 2rem; color: var(--green); font-size: 14px; }
+.qr-toggle {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--accent); font-weight: 500; margin-bottom: 1rem;
+}
+.qr-toggle:hover { opacity: .8; }
+
+/* ── Insights: next steps ── */
+.ns-list { display: flex; flex-direction: column; gap: .625rem; margin-bottom: 1.75rem; }
+.ns-item {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: var(--g0); border: 1px solid var(--gb);
+  border-radius: var(--r); padding: 1rem 1.25rem;
+  transition: background .2s, transform .2s;
+}
+.ns-item:hover { background: var(--g1); transform: translateY(-1px); }
+.ns-left { display: flex; flex-direction: column; gap: 6px; align-items: center; flex-shrink: 0; width: 86px; }
+.ns-phase {
+  font-size: 9px; font-family: var(--mono); text-transform: uppercase;
+  letter-spacing: .06em; padding: 3px 9px; border-radius: 99px;
+  white-space: nowrap; text-align: center; width: 100%; font-weight: 600;
+}
+.ns-phase-Validation { background: rgba(99,102,241,0.15);  color: var(--accent);   border: 1px solid rgba(99,102,241,0.25); }
+.ns-phase-Deployment { background: rgba(45,212,191,0.12);  color: var(--teal);     border: 1px solid rgba(45,212,191,0.25); }
+.ns-phase-Monitoring { background: rgba(251,191,36,0.12);  color: var(--amber);    border: 1px solid rgba(251,191,36,0.25); }
+.ns-phase-Retraining { background: rgba(192,132,252,0.12); color: var(--purple-d); border: 1px solid rgba(192,132,252,0.25); }
+.ns-body { flex: 1; min-width: 0; }
+.ns-title  { font-size: 13px; font-weight: 600; color: var(--t1); margin-bottom: .3rem; }
+.ns-detail { font-size: 12px; color: var(--t2); line-height: 1.7; }
+
+/* ── Profile cards ── */
+.profile-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px; margin-bottom: 1.75rem;
+}
+.profile-card {
+  background: var(--g0); border: 1px solid var(--gb);
+  border-radius: var(--r-lg); padding: 1.1rem 1.25rem;
+  position: relative; overflow: hidden;
+  transition: background .2s, transform .2s;
+}
+.profile-card:hover { background: var(--g1); transform: translateY(-1px); }
+.profile-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--grad);
+}
+.profile-label { font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: .375rem; padding-bottom: .375rem; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.profile-desc  { font-size: 12px; color: var(--t2); margin-bottom: .625rem; line-height: 1.65; }
+.profile-chars { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .3rem; }
+.profile-chars li { font-size: 11px; color: var(--t3); font-family: var(--mono); display: flex; gap: 5px; line-height: 1.5; }
+.profile-chars li::before { content: "→"; color: var(--accent); flex-shrink: 0; }
+
+/* ── Level badges ── */
+.lvl { font-size: 10px; font-family: var(--mono); padding: 2px 8px; border-radius: 99px; display: inline-block; font-weight: 500; }
+.lvl-high    { background: rgba(248,113,113,0.12); color: var(--red);    border: 1px solid rgba(248,113,113,0.25); }
+.lvl-medium  { background: rgba(251,191,36,0.12);  color: var(--amber);  border: 1px solid rgba(251,191,36,0.25); }
+.lvl-low     { background: rgba(52,211,153,0.12);  color: var(--green);  border: 1px solid rgba(52,211,153,0.25); }
+.lvl-fast    { background: rgba(52,211,153,0.12);  color: var(--green);  border: 1px solid rgba(52,211,153,0.25); }
+.lvl-slow    { background: rgba(248,113,113,0.12); color: var(--red);    border: 1px solid rgba(248,113,113,0.25); }
+.lvl-higher  { background: rgba(52,211,153,0.12);  color: var(--green);  border: 1px solid rgba(52,211,153,0.25); }
+.lvl-lower   { background: rgba(248,113,113,0.12); color: var(--red);    border: 1px solid rgba(248,113,113,0.25); }
+.lvl-similar { background: rgba(99,102,241,0.12);  color: var(--accent); border: 1px solid rgba(99,102,241,0.25); }
+
+/* ── Alt model cards ── */
+.alt-cards-list { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1.75rem; }
+.alt-card {
+  background: var(--g0); border: 1.5px solid var(--gb);
+  border-radius: var(--r-lg); padding: 1.25rem 1.5rem;
+  transition: background .2s, transform .2s;
+}
+.alt-card:hover { background: var(--g1); transform: translateY(-1px); }
+.alt-alg-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
+.alt-alg-name { font-size: 14px; font-weight: 600; color: var(--t1); }
+.alt-vs { font-size: 12px; color: var(--t3); font-style: italic; margin-bottom: .875rem; padding-bottom: .875rem; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.pc-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .07em; margin-bottom: .5rem; font-weight: 600; }
+.pc-pros .pc-label { color: var(--green); }
+.pc-cons .pc-label { color: var(--red); }
+.pc-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .35rem; }
+.pc-list li { font-size: 12px; color: var(--t2); display: flex; gap: 6px; line-height: 1.55; }
+.pc-pros .pc-list li::before { content: "✓"; color: var(--green); flex-shrink: 0; font-weight: 700; }
+.pc-cons .pc-list li::before { content: "✕"; color: var(--red);   flex-shrink: 0; font-weight: 700; }
+
+/* ── Theme toggle button ── */
+.theme-toggle {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,0.13);
+  background: rgba(255,255,255,0.07);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .2s; flex-shrink: 0; color: var(--t2);
+  padding: 0;
+}
+.theme-toggle:hover { background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.22); transform: scale(1.06); }
+.theme-toggle svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── Light mode ── */
+[data-theme="light"] {
+  --t1: rgba(14,9,38,0.92);
+  --t2: rgba(14,9,38,0.58);
+  --t3: rgba(14,9,38,0.36);
+  --g0: rgba(255,255,255,0.58);
+  --g1: rgba(255,255,255,0.78);
+  --g2: rgba(255,255,255,0.92);
+  --gb: rgba(99,102,241,0.16);
+  --gb2: rgba(99,102,241,0.30);
+}
+[data-theme="light"] body { background: #edeaff; }
+[data-theme="light"] .orb-1 { background: radial-gradient(circle, rgba(99,102,241,0.22) 0%, transparent 68%); }
+[data-theme="light"] .orb-2 { background: radial-gradient(circle, rgba(168,85,247,0.18) 0%, transparent 68%); }
+[data-theme="light"] .orb-3 { background: radial-gradient(circle, rgba(6,182,212,0.14) 0%, transparent 68%); }
+
+[data-theme="light"] .topbar {
+  background: rgba(237,234,255,0.88);
+  border-bottom-color: rgba(99,102,241,0.14);
+}
+[data-theme="light"] .theme-toggle {
+  background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.20); color: var(--t2);
+}
+[data-theme="light"] .theme-toggle:hover { background: rgba(99,102,241,0.14); }
+[data-theme="light"] #hdr-badge {
+  background: rgba(99,102,241,0.07); border-color: rgba(99,102,241,0.18); color: var(--t3);
+}
+[data-theme="light"] .wizard-card {
+  background: rgba(255,255,255,0.68);
+  border-color: rgba(255,255,255,0.92);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.80) inset, 0 40px 80px rgba(99,102,241,0.10), 0 0 120px rgba(99,102,241,0.07);
+}
+[data-theme="light"] .wizard-header {
+  background: rgba(237,234,255,0.82);
+  border-bottom-color: rgba(99,102,241,0.12);
+}
+[data-theme="light"] .step-num-w { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.22); }
+[data-theme="light"] .step-connector { background: rgba(99,102,241,0.16); }
+[data-theme="light"] .sbi { background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.14); }
+[data-theme="light"] .section-label::after { background: rgba(99,102,241,0.14); }
+[data-theme="light"] .divider { background: rgba(99,102,241,0.12); }
+
+[data-theme="light"] .upload-zone { background: rgba(255,255,255,0.55); border-color: rgba(99,102,241,0.22); }
+[data-theme="light"] .upload-zone.drag { background: rgba(99,102,241,0.07); border-color: var(--accent-d); }
+[data-theme="light"] .upload-zone.has-file { background: rgba(45,212,191,0.07); border-color: rgba(45,212,191,0.35); }
+
+[data-theme="light"] .badge { background: rgba(99,102,241,0.07); border-color: rgba(99,102,241,0.18); color: var(--t3); }
+[data-theme="light"] textarea { background: rgba(255,255,255,0.80); border-color: rgba(99,102,241,0.18); }
+[data-theme="light"] textarea:focus { border-color: rgba(99,102,241,0.48); box-shadow: 0 0 0 3px rgba(99,102,241,0.09); }
+
+[data-theme="light"] .btn { background: rgba(255,255,255,0.72); border-color: rgba(99,102,241,0.18); color: var(--t1); }
+[data-theme="light"] .btn:hover { background: rgba(255,255,255,0.92); border-color: rgba(99,102,241,0.32); }
+[data-theme="light"] .btn-ghost { background: transparent; border-color: transparent; }
+[data-theme="light"] .btn-ghost:hover { background: rgba(99,102,241,0.06); border-color: transparent; }
+[data-theme="light"] .btn-upload { background: rgba(255,255,255,0.72); border-color: rgba(99,102,241,0.18); color: var(--t1); }
+[data-theme="light"] .btn-upload:hover { background: rgba(255,255,255,0.92); }
+
+[data-theme="light"] .stat-card { background: rgba(255,255,255,0.65); border-color: rgba(99,102,241,0.16); }
+[data-theme="light"] .tbl-wrap { background: rgba(255,255,255,0.55); border-color: rgba(99,102,241,0.14); }
+[data-theme="light"] thead th { background: rgba(99,102,241,0.06); color: var(--t3); border-bottom-color: rgba(99,102,241,0.12); }
+[data-theme="light"] tbody td { border-bottom-color: rgba(99,102,241,0.08); }
+[data-theme="light"] tbody tr:hover td { background: rgba(99,102,241,0.04); }
+[data-theme="light"] .null-bar { background: rgba(99,102,241,0.12); }
+
+[data-theme="light"] .ai-box { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.16); border-left-color: var(--accent-d); }
+[data-theme="light"] .uc-card { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.16); }
+[data-theme="light"] .uc-card:hover { background: rgba(255,255,255,0.88); border-color: rgba(99,102,241,0.32); }
+[data-theme="light"] .uc-card.selected { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.42); }
+[data-theme="light"] .uc-reasons { border-top-color: rgba(99,102,241,0.12); }
+
+[data-theme="light"] .qr-score-bar-wrap { background: rgba(99,102,241,0.10); }
+[data-theme="light"] .qr-warn-high   { background: rgba(239,68,68,0.06); }
+[data-theme="light"] .qr-warn-medium { background: rgba(251,191,36,0.06); }
+[data-theme="light"] .qr-warn-low    { background: rgba(99,102,241,0.05); }
+
+[data-theme="light"] .ns-item { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.13); }
+[data-theme="light"] .ns-item:hover { background: rgba(255,255,255,0.88); }
+[data-theme="light"] .profile-card { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.13); }
+[data-theme="light"] .profile-card:hover { background: rgba(255,255,255,0.88); }
+[data-theme="light"] .profile-label { border-bottom-color: rgba(99,102,241,0.12); }
+[data-theme="light"] .alt-card { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.16); }
+[data-theme="light"] .alt-card:hover { background: rgba(255,255,255,0.88); }
+[data-theme="light"] .alt-vs { border-bottom-color: rgba(99,102,241,0.12); }
+
+[data-theme="light"] .spinner { border-color: rgba(99,102,241,0.14); border-top-color: var(--accent-d); }
+/* Code block stays dark — intentional for readability */
+[data-theme="light"] .code-meta-txt { color: var(--t3); }
+
+/* ── Stage 3 two-column layout ── */
+.stage3-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+.stage3-main   { flex: 1; min-width: 0; }
+
+.score-sidebar {
+  width: 230px; flex-shrink: 0;
+  position: sticky; top: 160px;
+  background: var(--g0);
+  border: 1px solid var(--gb);
+  border-radius: var(--r-lg);
+  padding: 1.25rem;
+}
+
+.score-factor { margin-bottom: 1.1rem; }
+.sf-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: .375rem;
+}
+.sf-name { font-size: 12px; font-weight: 600; color: var(--t2); }
+.sf-weight {
+  font-size: 11px; font-family: var(--mono); font-weight: 600;
+  color: var(--accent);
+  background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.22);
+  padding: 2px 8px; border-radius: 99px;
+}
+.sf-bar-wrap {
+  height: 4px; background: rgba(255,255,255,0.08);
+  border-radius: 2px; overflow: hidden; margin-bottom: .5rem;
+}
+.sf-bar { height: 100%; border-radius: 2px; background: var(--grad); }
+.sf-desc { font-size: 11px; color: var(--t3); line-height: 1.6; }
+
+.sf-legend { display: flex; flex-direction: column; gap: 6px; margin-bottom: .25rem; }
+.sf-leg-row { display: flex; align-items: center; justify-content: space-between; }
+.sf-leg-pts { font-size: 11px; font-family: var(--mono); color: var(--t3); }
+.sf-formula  { font-size: 11px; color: var(--t3); line-height: 1.65; }
+
+[data-theme="light"] .score-sidebar { background: rgba(255,255,255,0.65); border-color: rgba(99,102,241,0.14); }
+[data-theme="light"] .sf-bar-wrap   { background: rgba(99,102,241,0.10); }
+
+/* ── Feature Engineering Panel ── */
+.fe-panel {
+  margin-top: 1.5rem;
+  background: var(--g0); border: 1.5px solid var(--gb);
+  border-radius: var(--r-xl); overflow: hidden;
+}
+.fe-panel-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: .875rem 1.25rem;
+  border-bottom: 1px solid var(--gb);
+  background: rgba(99,102,241,0.06);
+}
+.fe-panel-title { font-size: 13px; font-weight: 600; color: var(--t1); }
+.fe-panel-sub   { font-size: 11px; color: var(--t3); margin-left: auto; }
+.fe-panel-body  { padding: 1.25rem; display: flex; flex-direction: column; gap: .875rem; }
+.fe-summary {
+  font-size: 13px; color: var(--t2); line-height: 1.65;
+  padding-bottom: .875rem; border-bottom: 1px solid var(--gb);
+  margin: 0;
+}
+.fe-rec {
+  background: var(--g1); border: 1.5px solid var(--gb);
+  border-radius: var(--r-lg); padding: .875rem 1rem;
+  display: flex; flex-direction: column; gap: .5rem;
+  cursor: pointer; user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.fe-rec:hover  { border-color: rgba(99,102,241,.35); background: rgba(99,102,241,.04); }
+.fe-rec.selected {
+  border-color: var(--accent);
+  background: rgba(99,102,241,.08);
+}
+.fe-rec.selected .fe-check { background: var(--accent); border-color: var(--accent); }
+.fe-rec.selected .fe-check svg { display: block; }
+.fe-check {
+  width: 18px; height: 18px; flex-shrink: 0;
+  border: 1.5px solid var(--gb); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, border-color .15s;
+}
+.fe-check svg { display: none; width: 9px; height: 9px; }
+.fe-header-actions {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+}
+.fe-sel-count { font-size: 11px; color: var(--t3); }
+.fe-toggle-btn {
+  font-size: 11px; padding: 2px 9px; border-radius: 6px;
+  border: 1px solid var(--gb); background: transparent;
+  color: var(--t2); cursor: pointer; transition: background .12s;
+}
+.fe-toggle-btn:hover { background: rgba(99,102,241,.12); color: var(--t1); }
+.fe-rec-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fe-type-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  padding: 2px 8px; border-radius: 99px; text-transform: uppercase;
+}
+.fe-type-badge.transform   { background: rgba(59,130,246,.15); color: #60a5fa; }
+.fe-type-badge.new-feature { background: rgba(16,185,129,.15); color: #34d399; }
+.fe-type-badge.encoding    { background: rgba(139,92,246,.15);  color: #a78bfa; }
+.fe-type-badge.imputation  { background: rgba(245,158,11,.15);  color: #fbbf24; }
+.fe-type-badge.interaction { background: rgba(20,184,166,.15);  color: #2dd4bf; }
+.fe-col-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.fe-col-tag {
+  font-size: 10px; font-family: var(--mono);
+  background: rgba(255,255,255,.06); border: 1px solid var(--gb);
+  border-radius: 4px; padding: 1px 6px; color: var(--t2);
+}
+.fe-rec-title    { font-size: 13px; font-weight: 600; color: var(--t1); }
+.fe-rec-rationale { font-size: 12px; color: var(--t2); line-height: 1.6; margin: 0; }
+.fe-code-wrap { position: relative; }
+.fe-code {
+  font-family: var(--mono); font-size: 11.5px; color: #a5b4fc;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(99,102,241,.18);
+  border-radius: var(--r); padding: .55rem 2.5rem .55rem .75rem;
+  white-space: pre-wrap; word-break: break-all; line-height: 1.6; margin: 0;
+}
+.fe-copy-btn {
+  position: absolute; top: 5px; right: 6px;
+  background: rgba(99,102,241,.18); border: none; border-radius: 5px;
+  color: var(--t2); font-size: 10px; padding: 3px 7px; cursor: pointer;
+  transition: background .15s;
+}
+.fe-copy-btn:hover { background: rgba(99,102,241,.35); }
+
+[data-theme="light"] .fe-panel    { background: rgba(255,255,255,.62); border-color: rgba(99,102,241,.16); }
+[data-theme="light"] .fe-panel-header { background: rgba(99,102,241,.05); border-color: rgba(99,102,241,.12); }
+[data-theme="light"] .fe-rec      { background: rgba(255,255,255,.8); border-color: rgba(99,102,241,.14); }
+[data-theme="light"] .fe-col-tag  { background: rgba(0,0,0,.04); border-color: rgba(99,102,241,.15); color: var(--t2); }
+[data-theme="light"] .fe-code     { background: rgba(0,0,0,.04); border-color: rgba(99,102,241,.18); color: #4f46e5; }
+[data-theme="light"] .fe-copy-btn { background: rgba(99,102,241,.10); }
+
+/* ── Business Context Agent Panel ── */
+.biz-agent-intro {
+  display: flex; align-items: flex-start; gap: 14px;
+  background: var(--g0); border: 1.5px solid var(--gb);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-xl); padding: 1.5rem 1.75rem;
+  margin-bottom: 1.75rem;
+}
+.biz-agent-avatar {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: var(--grad); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 16px rgba(99,102,241,0.45);
+}
+.biz-agent-msg { flex: 1; }
+.biz-agent-msg p { font-size: 13px; color: var(--t2); line-height: 1.75; }
+.biz-agent-msg p + p { margin-top: .5rem; }
+
+.biz-ctx-panel {
+  display: flex; flex-direction: column; gap: 1.1rem;
+  margin-bottom: 1.75rem;
+}
+.biz-q { display: flex; flex-direction: column; gap: .45rem; }
+.biz-q .field-label { margin-bottom: 0; }
+.biz-q-num {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  background: var(--grad); color: #fff;
+  padding: 2px 8px; border-radius: 99px;
+  margin-right: 4px;
+}
+.biz-q textarea { min-height: 68px; }
+
+[data-theme="light"] .biz-agent-intro { background: rgba(255,255,255,0.62); border-color: rgba(99,102,241,0.16); border-left-color: var(--accent-d); }
+
+/* ── Multi-file list ── */
+.file-list { margin-top: .875rem; display: flex; flex-direction: column; gap: 6px; }
+.file-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: .5rem .875rem;
+  background: var(--g0); border: 1px solid var(--gb); border-radius: var(--r);
+  font-size: 12px;
+}
+.file-list-icon { font-size: 15px; flex-shrink: 0; }
+.file-list-name { flex: 1; font-family: var(--mono); color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-list-size { color: var(--t3); font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
+.file-list-remove {
+  background: none; border: none; color: var(--t3);
+  cursor: pointer; padding: 0 4px; font-size: 18px; line-height: 1;
+  transition: color .15s; flex-shrink: 0;
+}
+.file-list-remove:hover { color: var(--red); }
+[data-theme="light"] .file-list-item { background: rgba(255,255,255,0.65); border-color: rgba(99,102,241,0.14); }
+
+/* ── Join type badges ── */
+.join-type-badge {
+  font-size: 10px; font-family: var(--mono); font-weight: 600;
+  padding: 2px 10px; border-radius: 99px; text-transform: uppercase; letter-spacing: .04em;
+}
+.join-inner { background: rgba(99,102,241,0.15); color: var(--accent);   border: 1px solid rgba(99,102,241,0.25); }
+.join-left  { background: rgba(45,212,191,0.12);  color: var(--teal);    border: 1px solid rgba(45,212,191,0.25); }
+.join-right { background: rgba(251,191,36,0.12);  color: var(--amber);   border: 1px solid rgba(251,191,36,0.25); }
+.join-outer { background: rgba(192,132,252,0.12); color: var(--purple-d);border: 1px solid rgba(192,132,252,0.25); }
+</style>
+</head>
+<body>
+
+<!-- Background orbs -->
+<div class="orb orb-1" aria-hidden="true"></div>
+<div class="orb orb-2" aria-hidden="true"></div>
+<div class="orb orb-3" aria-hidden="true"></div>
+
+<!-- Hidden file input (multiple CSVs supported) -->
+<input type="file" id="file-input" accept=".csv" multiple />
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-gem"></div>
+    <span>CASEbook</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" aria-label="Switch to light mode"></button>
+  </div>
+</div>
+
+<main>
+  <div class="wizard-card">
+
+    <!-- Step track -->
+    <div class="wizard-header">
+      <nav class="steps-track">
+        <div class="step-item active" id="step-1">
+          <div class="step-num-w" id="sn-1">1</div>
+          <span class="step-label">Upload</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-2">
+          <div class="step-num-w" id="sn-2">2</div>
+          <span class="step-label">Analyse</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-3">
+          <div class="step-num-w" id="sn-3">3</div>
+          <span class="step-label">Use Case</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-4">
+          <div class="step-num-w" id="sn-4">4</div>
+          <span class="step-label">Code</span>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step-item" id="step-5">
+          <div class="step-num-w" id="sn-5">5</div>
+          <span class="step-label">Insights</span>
+        </div>
+      </nav>
+
+      <!-- File info strip (shown after upload) -->
+      <div class="sbi hidden" id="sbi">
+        <span class="sbi-val" id="sbi-file">—</span>
+        <span class="sbi-dot">·</span>
+        <span class="sbi-val" id="sbi-dims">—</span>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="wizard-body">
+
+      <!-- Error banner -->
+      <div class="alert alert-error" id="error-banner"></div>
+
+      <!-- ── Stage 1: Upload ── -->
+      <div id="stage-1">
+
+        <!-- Sub-state A: Upload -->
+        <div id="stage-1-upload">
+          <h1 class="page-title">Upload your datasets</h1>
+          <p class="page-sub">Drop one or more CSV files — upload multiple and AI will recommend how to join them.</p>
+
+          <div class="upload-zone" id="drop-zone">
+            <div style="font-size:32px;margin-bottom:.875rem">📂</div>
+            <h3 id="upload-title">Drop CSV files here</h3>
+            <p id="upload-sub">One or multiple CSV files · AI auto-detects joins</p>
+            <label class="btn-upload" for="file-input">Browse files</label>
+          </div>
+
+          <!-- Uploaded file list -->
+          <div id="file-list" class="file-list hidden"></div>
+
+          <div class="field-group">
+            <div class="field-label">Column descriptions <span class="badge">optional</span></div>
+            <textarea id="col-desc" placeholder="Give context about your columns, e.g.:&#10;customer_id: unique customer identifier&#10;churn: 1 if customer left in 30 days, 0 otherwise&#10;monthly_spend: average monthly spend in USD"></textarea>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="analyse-btn" disabled>Analyse Dataset →</button>
+            <span id="upload-hint" style="font-size:12px;color:var(--t3)">Upload CSV files to continue</span>
+          </div>
+        </div>
+
+        <!-- Sub-state B: Join recommendations (shown when 2+ files uploaded) -->
+        <div id="stage-1-join" class="hidden">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:.5rem">
+            <span class="ai-chip">AI Agent</span>
+            <h1 class="page-title" style="margin:0;font-size:1.55rem">Join recommendations</h1>
+          </div>
+          <p class="page-sub">I've analysed your datasets — select a join to combine them into a unified analytical table.</p>
+
+          <div class="ai-box hidden" id="join-summary-box">
+            <div class="ai-header"><span class="ai-chip">Analysis</span></div>
+            <div class="ai-text" id="join-summary-text"></div>
+          </div>
+
+          <div class="spinner-wrap" id="join-spinner"><div class="spinner"></div>Analysing datasets for join opportunities…</div>
+
+          <div id="join-recs-container" class="hidden">
+            <div class="section-label">Recommended joins — click one to select</div>
+            <div class="uc-grid" id="join-recs-grid"></div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="apply-join-btn" disabled>Apply Join &amp; Analyse →</button>
+              <button class="btn" onclick="skipJoin()">Use first file only</button>
+              <button class="btn btn-ghost" onclick="showUploadState()">← Back</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Stage 2: Analysis ── -->
+      <div id="stage-2" class="hidden">
+        <h1 class="page-title">Dataset overview</h1>
+        <p class="page-sub">Profile computed locally · AI analysis via Bedrock</p>
+
+        <div class="stats-grid" id="stats-grid"></div>
+
+        <div class="section-label">Column profile</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Column</th><th>Type</th><th>Nulls</th><th>Unique</th><th>Mean</th><th>Sample values</th></tr></thead>
+            <tbody id="col-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Quality Report Panel -->
+        <div id="qr-panel" class="hidden">
+          <div class="divider"></div>
+          <div class="qr-toggle" onclick="toggleQR()">
+            <span id="qr-toggle-icon">▼</span>
+            <span id="qr-toggle-label">Data Quality Report</span>
+            <span id="qr-grade-inline" style="font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:99px;margin-left:4px"></span>
+          </div>
+          <div id="qr-body">
+            <div class="qr-header">
+              <div class="qr-grade" id="qr-grade-badge">
+                <div class="qr-grade-letter" id="qr-grade-letter">—</div>
+                <div class="qr-grade-label"  id="qr-grade-lbl"></div>
+              </div>
+              <div class="qr-score-block">
+                <div style="font-size:13px;font-weight:500;color:var(--t1)" id="qr-score-txt">Quality Score</div>
+                <div class="qr-score-bar-wrap"><div class="qr-score-bar" id="qr-score-bar"></div></div>
+                <div class="qr-counts" id="qr-counts"></div>
+              </div>
+            </div>
+            <div class="section-label">Warnings &amp; recommendations</div>
+            <div class="qr-warning-list" id="qr-warning-list"></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section-label">AI analysis</div>
+        <div class="ai-box">
+          <div class="ai-header">
+            <span class="ai-chip" id="ai-chip">Analysing</span>
+            <span style="font-size:12px;color:var(--t3)" id="ai-status">Running…</span>
+          </div>
+          <div class="ai-text" id="ai-text"><span class="cursor"></span></div>
+        </div>
+
+        <div id="analyse-continue-row" class="btn-row hidden" style="margin-top:1.5rem">
+          <button class="btn btn-primary" id="to-usecase-btn">View Use Cases →</button>
+          <button class="btn btn-ghost" onclick="restart()">↺ Start over</button>
+        </div>
+      </div>
+
+      <!-- ── Stage 3: Select Use Case ── -->
+      <div id="stage-3" class="hidden">
+
+        <!-- Sub-state A: Business context questions -->
+        <div id="stage-3-questions">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:.5rem">
+            <span class="ai-chip">AI Agent</span>
+            <h1 class="page-title" style="margin:0;font-size:1.55rem">Business context</h1>
+          </div>
+
+          <div class="biz-agent-intro">
+            <div class="biz-agent-avatar">🤖</div>
+            <div class="biz-agent-msg">
+              <p id="biz-agent-msg-text">Before I surface the best ML use cases for your dataset, help me understand your situation. Your answers let me prioritise use cases that actually match your goals, users, and constraints.</p>
+              <p style="color:var(--t3);font-size:12px">All fields are optional — skip any you'd prefer not to answer.</p>
+            </div>
+          </div>
+
+          <div class="biz-ctx-panel">
+            <div class="biz-q">
+              <div class="field-label"><span class="biz-q-num">Q1</span> <span id="bq-label-1">What is your primary business goal?</span></div>
+              <textarea id="bq-1" placeholder="e.g. Reduce customer churn by 20%, automate invoice classification, improve demand forecasting accuracy…"></textarea>
+            </div>
+            <div class="biz-q">
+              <div class="field-label"><span class="biz-q-num">Q2</span> <span id="bq-label-2">Who are the end users or main stakeholders?</span></div>
+              <textarea id="bq-2" placeholder="e.g. Sales managers, customer support agents, supply chain planners, executive dashboard…"></textarea>
+            </div>
+            <div class="biz-q">
+              <div class="field-label"><span class="biz-q-num">Q3</span> <span id="bq-label-3">What specific pain point should this solve?</span></div>
+              <textarea id="bq-3" placeholder="e.g. We lose 15% of customers each quarter and don't know who's at risk until it's too late…"></textarea>
+            </div>
+            <div class="biz-q">
+              <div class="field-label"><span class="biz-q-num">Q4</span> <span id="bq-label-4">Any constraints or preferences?</span></div>
+              <textarea id="bq-4" placeholder="e.g. Model must be explainable to regulators, deploy on AWS, 3-month timeline, small team of 2 engineers…"></textarea>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="refine-btn">Get tailored use cases →</button>
+            <button class="btn" id="skip-ctx-btn">Skip, use AI defaults</button>
+            <button class="btn btn-ghost" onclick="setStage(2)">← Back</button>
+          </div>
+        </div>
+
+        <!-- Sub-state B: Use case grid -->
+        <div id="stage-3-usecases" class="hidden">
+          <h1 class="page-title">Select a use case</h1>
+          <p class="page-sub" id="uc-sub">Pick the ML use case you'd like to build.</p>
+
+          <div class="spinner-wrap hidden" id="uc-refine-spinner"><div class="spinner"></div>Tailoring use cases to your business context…</div>
+
+          <div class="stage3-layout" id="stage-3-main-content">
+            <!-- Main column -->
+            <div class="stage3-main">
+              <div class="domain-row">
+                <span class="domain-badge" id="domain-badge-3">—</span>
+                <span class="domain-reason" id="domain-reason-3"></span>
+              </div>
+              <div class="divider"></div>
+              <div class="section-label">Recommended ML use cases — click one to select</div>
+              <div class="uc-grid" id="uc-grid"></div>
+
+              <div class="btn-row">
+                <button class="btn btn-primary" id="generate-btn" disabled>Generate starter code →</button>
+                <button class="btn" onclick="goToUseCaseSlide(true)">← Edit context</button>
+                <button class="btn btn-ghost" onclick="restart()">↺ Start over</button>
+              </div>
+            </div>
+
+            <!-- Score explanation sidebar -->
+            <aside class="score-sidebar">
+              <div class="section-label">Score breakdown</div>
+
+              <div class="score-factor">
+                <div class="sf-header">
+                  <span class="sf-name">Business Impact</span>
+                  <span class="sf-weight">40%</span>
+                </div>
+                <div class="sf-bar-wrap"><div class="sf-bar" style="width:40%"></div></div>
+                <p class="sf-desc">How directly this use case drives measurable business outcomes — the primary scoring driver.</p>
+              </div>
+
+              <div class="score-factor">
+                <div class="sf-header">
+                  <span class="sf-name">Data Readiness</span>
+                  <span class="sf-weight">35%</span>
+                </div>
+                <div class="sf-bar-wrap"><div class="sf-bar" style="width:35%"></div></div>
+                <p class="sf-desc">Whether your data has the right columns, quality, and volume to support this approach.</p>
+              </div>
+
+              <div class="score-factor">
+                <div class="sf-header">
+                  <span class="sf-name">Ease of Implementation</span>
+                  <span class="sf-weight">25%</span>
+                </div>
+                <div class="sf-bar-wrap"><div class="sf-bar" style="width:25%"></div></div>
+                <p class="sf-desc">Estimated effort for preprocessing, modelling, validation, and deployment.</p>
+              </div>
+
+              <div class="divider" style="margin:.875rem 0"></div>
+
+              <div class="section-label">Rating key</div>
+              <div class="sf-legend">
+                <div class="sf-leg-row">
+                  <span class="pill high"><span class="pill-dot"></span>High</span>
+                  <span class="sf-leg-pts">3 pts</span>
+                </div>
+                <div class="sf-leg-row">
+                  <span class="pill mid"><span class="pill-dot"></span>Medium</span>
+                  <span class="sf-leg-pts">2 pts</span>
+                </div>
+                <div class="sf-leg-row">
+                  <span class="pill low"><span class="pill-dot"></span>Low</span>
+                  <span class="sf-leg-pts">1 pt</span>
+                </div>
+              </div>
+
+              <div class="divider" style="margin:.875rem 0"></div>
+              <p class="sf-formula">Each score is the weighted average of the three factors above, normalised to 0–100.</p>
+            </aside>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Stage 4: Code ── -->
+      <div id="stage-4" class="hidden">
+        <h1 class="page-title" id="code-title">Starter code</h1>
+        <p class="page-sub" id="code-sub"></p>
+
+        <!-- Sub-state A: Feature engineering selection -->
+        <div id="code-fe-select" class="hidden">
+          <div class="fe-panel" style="margin-top:0;margin-bottom:1.5rem">
+            <div class="fe-panel-header">
+              <span class="fe-panel-title">⚡ Feature Engineering</span>
+              <span class="fe-panel-sub" id="fe-panel-sub"></span>
+              <div class="fe-header-actions hidden" id="fe-header-actions">
+                <span class="fe-sel-count" id="fe-sel-count"></span>
+                <button class="fe-toggle-btn" onclick="setAllFERecs(true)">All</button>
+                <button class="fe-toggle-btn" onclick="setAllFERecs(false)">None</button>
+              </div>
+            </div>
+            <div class="fe-panel-body">
+              <div class="spinner-wrap" id="fe-spinner"><div class="spinner"></div>Analysing feature engineering opportunities…</div>
+              <div id="fe-content" class="hidden">
+                <p class="fe-summary" id="fe-summary"></p>
+                <div id="fe-recs"></div>
+              </div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="run-codegen-btn">Generate code →</button>
+            <button class="btn" onclick="goToUseCaseSlide(false)">← Back to use cases</button>
+            <button class="btn btn-ghost" onclick="restart()">↺ Start over</button>
+          </div>
+        </div>
+
+        <!-- Sub-state B: Generating -->
+        <div class="spinner-wrap hidden" id="code-spinner"><div class="spinner"></div>Generating code…</div>
+        <div id="code-ready" class="hidden">
+          <div class="code-toolbar">
+            <span class="code-meta-txt" id="code-lines"></span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="copy-btn" id="copy-btn">copy code</button>
+              <button class="btn btn-primary" id="dl-btn" style="padding:7px 14px;font-size:12px">⬇ Download .py</button>
+              <button class="btn" id="nb-btn" style="padding:7px 14px;font-size:12px">📓 Download .ipynb</button>
+            </div>
+          </div>
+          <div class="code-wrap">
+            <div class="code-topbar">
+              <div class="dots">
+                <span style="background:#ff5f57"></span>
+                <span style="background:#febc2e"></span>
+                <span style="background:#28c840"></span>
+              </div>
+              <span class="file-label" id="code-fname">starter.py</span>
+            </div>
+            <pre><code id="code-out"></code></pre>
+          </div>
+          <div class="alert alert-success">✅ Code ready — download as <strong>.py</strong> or <strong>.ipynb</strong> · install deps: <code style="font-family:var(--mono);font-size:11px">pip install pandas scikit-learn matplotlib seaborn joblib</code></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="insights-btn" disabled>View Insights →</button>
+            <button class="btn" onclick="goToUseCaseSlide(false)">← Try another use case</button>
+            <button class="btn btn-ghost" onclick="restart()">↺ Start over</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Stage 5: Insights ── -->
+      <div id="stage-5" class="hidden">
+        <h1 class="page-title">Beyond the Model</h1>
+        <p class="page-sub" id="insights-sub"></p>
+        <div class="spinner-wrap" id="insights-spinner"><div class="spinner"></div>Generating insights…</div>
+
+        <div id="insights-ready" class="hidden">
+
+          <div class="section-label">Next steps checklist</div>
+          <div class="ns-list" id="ns-list"></div>
+
+          <div class="divider"></div>
+
+          <div class="section-label" id="profiling-section-label">Output profile</div>
+          <div class="ai-box" style="margin-bottom:1.25rem" id="profiling-desc-box"></div>
+          <div class="profile-grid" id="profiling-grid"></div>
+
+          <div class="divider"></div>
+
+          <div class="section-label">Alternative model options</div>
+          <div class="tbl-wrap" style="margin-bottom:1.25rem">
+            <table>
+              <thead>
+                <tr>
+                  <th>Algorithm</th><th>Complexity</th><th>Speed</th>
+                  <th>Interpretability</th><th>Expected Accuracy</th><th>When to use</th>
+                </tr>
+              </thead>
+              <tbody id="alt-tbl-body"></tbody>
+            </table>
+          </div>
+          <div class="alt-cards-list" id="alt-cards-list"></div>
+
+          <div class="btn-row">
+            <button class="btn" onclick="setStage(4); show('code-ready'); hide('code-fe-select')">← Back to code</button>
+            <button class="btn btn-ghost" onclick="restart()">↺ Start over</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- wizard-body -->
+  </div><!-- wizard-card -->
+</main>
+
+<script>
+// ── Theme ─────────────────────────────────────────────────────────────────────
+const _SUN_ICON = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+const _MOON_ICON = `<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+
+function _applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  if (theme === 'dark') {
+    btn.innerHTML = _SUN_ICON;
+    btn.setAttribute('aria-label', 'Switch to light mode');
+  } else {
+    btn.innerHTML = _MOON_ICON;
+    btn.setAttribute('aria-label', 'Switch to dark mode');
+  }
+}
+
+function toggleTheme() {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('ml-theme', next);
+  _applyTheme(next);
+}
+
+// Apply saved or system preference on load
+(function() {
+  const saved = localStorage.getItem('ml-theme');
+  const preferred = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  _applyTheme(preferred);
+})();
+
+// ── Globals ──────────────────────────────────────────────────────────────────
+const S = {
+  profile: null, colDesc: '', analysis: null, selectedUC: null,
+  code: '', filename: '', insights: null, businessContext: {},
+  bizQuestions: null, feRecs: null,
+  // multi-file join state
+  files: [], profiles: [], selectedJoin: null, joinRecs: null,
+};
+const $ = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+
+// ── Mock mode badge ───────────────────────────────────────────────────────────
+fetch('/api/health').then(r => r.json()).then(d => {
+  if (d.mode && d.mode.includes('mock')) {
+    $('hdr-badge').innerHTML = '<span style="background:rgba(255,200,50,.12);color:#fcd34d;border:1px solid rgba(252,211,77,.28);padding:3px 12px;border-radius:99px;font-size:11px;font-family:var(--mono)">⚡ MOCK MODE</span>';
+    $('ai-chip').textContent = 'Mock AI';
+  }
+}).catch(() => {});
+
+// ── Step nav ──────────────────────────────────────────────────────────────────
+function setStage(n) {
+  [1,2,3,4,5].forEach(i => {
+    hide('stage-' + i);
+    const el = $('step-' + i), num = $('sn-' + i);
+    el.className = 'step-item' + (i < n ? ' done clickable' : i === n ? ' active' : '');
+    num.textContent = i < n ? '✓' : i;
+  });
+  show('stage-' + n);
+  $('step-1').onclick = n > 1 ? restart : null;
+  $('step-2').onclick = n > 2 ? () => setStage(2) : null;
+  $('step-3').onclick = n > 3 ? () => goToUseCaseSlide(false) : null;
+  $('step-4').onclick = n > 4 ? () => { setStage(4); show('code-ready'); hide('code-fe-select'); } : null;
+}
+
+function restart() {
+  Object.assign(S, {
+    profile: null, colDesc: '', analysis: null, selectedUC: null,
+    code: '', filename: '', insights: null, businessContext: {},
+    bizQuestions: null, feRecs: null,
+    files: [], profiles: [], selectedJoin: null, joinRecs: null,
+  });
+  $('file-input').value = '';
+  $('drop-zone').className = 'upload-zone';
+  $('upload-title').textContent = 'Drop CSV files here';
+  $('upload-sub').textContent = 'One or multiple CSV files · AI auto-detects joins';
+  $('analyse-btn').disabled = true;
+  $('generate-btn').disabled = true;
+  $('insights-btn').disabled = true;
+  $('upload-hint').textContent = 'Upload CSV files to continue';
+  $('file-list').innerHTML = '';
+  hide('file-list');
+  hide('analyse-continue-row');
+  hide('code-fe-select');
+  resetFEPanel();
+  $('uc-grid').innerHTML = '';
+  ['bq-1','bq-2','bq-3','bq-4'].forEach(id => $(id).value = '');
+  $('biz-agent-msg-text').textContent = 'Before I surface the best ML use cases for your dataset, help me understand your situation. Your answers let me prioritise use cases that actually match your goals, users, and constraints.';
+  [['bq-label-1','What is your primary business goal?'],['bq-label-2','Who are the end users or main stakeholders?'],['bq-label-3','What specific pain point should this solve?'],['bq-label-4','Any constraints or preferences?']].forEach(([id, txt]) => $(id).textContent = txt);
+  $('bq-1').placeholder = 'e.g. Reduce customer churn by 20%, automate invoice classification, improve demand forecasting accuracy…';
+  $('bq-2').placeholder = 'e.g. Sales managers, customer support agents, supply chain planners, executive dashboard…';
+  $('bq-3').placeholder = "e.g. We lose 15% of customers each quarter and don't know who's at risk until it's too late…";
+  $('bq-4').placeholder = 'e.g. Model must be explainable to regulators, deploy on AWS, 3-month timeline, small team of 2 engineers…';
+  hide('sbi'); hide('error-banner');
+  $('error-banner').style.display = 'none';
+  showUploadState();
+  setStage(1);
+}
+
+// ── File upload (multi-file) ──────────────────────────────────────────────────
+function addFiles(fileList) {
+  let added = 0;
+  for (const f of fileList) {
+    if (!f.name.endsWith('.csv')) { showErr('Only CSV files are supported.'); continue; }
+    if (!S.files.some(ex => ex.name === f.name && ex.size === f.size)) {
+      S.files.push(f); added++;
+    }
+  }
+  if (added > 0) { hideErr(); updateFileList(); }
+}
+
+function updateFileList() {
+  const list = $('file-list');
+  if (S.files.length === 0) {
+    list.innerHTML = ''; list.classList.add('hidden');
+    $('drop-zone').className = 'upload-zone';
+    $('upload-title').textContent = 'Drop CSV files here';
+    $('upload-sub').textContent = 'One or multiple CSV files · AI auto-detects joins';
+    $('analyse-btn').disabled = true;
+    $('upload-hint').textContent = 'Upload CSV files to continue';
+    return;
+  }
+  $('drop-zone').className = 'upload-zone has-file';
+  $('upload-title').textContent = S.files.length === 1
+    ? '✓ 1 file selected' : '✓ ' + S.files.length + ' files selected';
+  $('upload-sub').textContent = S.files.length === 1
+    ? 'Add another CSV to enable AI join recommendations'
+    : S.files.length + ' CSV files · AI will recommend joins';
+  $('analyse-btn').disabled = false;
+  $('upload-hint').textContent = S.files.length === 1
+    ? 'Ready — or add another CSV to join datasets'
+    : 'Click Analyse — AI will recommend how to join your datasets';
+  list.innerHTML = S.files.map((f, i) =>
+    '<div class="file-list-item">' +
+    '<span class="file-list-icon">📄</span>' +
+    '<span class="file-list-name">' + f.name + '</span>' +
+    '<span class="file-list-size">' + (f.size / 1024).toFixed(1) + ' KB</span>' +
+    '<button class="file-list-remove" onclick="removeFile(' + i + ')" title="Remove">×</button>' +
+    '</div>'
+  ).join('');
+  list.classList.remove('hidden');
+}
+
+function removeFile(idx) { S.files.splice(idx, 1); updateFileList(); }
+
+$('file-input').addEventListener('change', () => {
+  addFiles($('file-input').files);
+  $('file-input').value = '';
+});
+
+const dz = $('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  addFiles(e.dataTransfer.files);
+});
+
+// ── Join stage helpers ────────────────────────────────────────────────────────
+function showUploadState() { show('stage-1-upload'); hide('stage-1-join'); }
+
+function showJoinState() {
+  hide('stage-1-upload'); show('stage-1-join');
+  hide('join-recs-container'); hide('join-summary-box');
+  show('join-spinner'); $('apply-join-btn').disabled = true;
+}
+
+function joinCardHTML(rec, idx) {
+  const confCls = rec.confidence === 'High' ? 'high' : rec.confidence === 'Medium' ? 'mid' : 'low';
+  const isChain = Array.isArray(rec.chain_steps) && rec.chain_steps.length > 0;
+
+  let metaHTML;
+  let keyHTML;
+  if (isChain) {
+    // Build a chain display: File A →(inner)→ File B →(left)→ File C
+    const chainLabel = rec.chain_steps.map((step, i) => {
+      const badge = '<span class="join-type-badge ' + ({ inner:'join-inner', left:'join-left', right:'join-right', outer:'join-outer' }[step.join_type] || 'join-inner') + '">' + step.join_type + '</span>';
+      const leftName = i === 0 ? '<span>' + step.left_file + '</span>' : '';
+      return leftName + badge + '<span>' + step.right_file + '</span>';
+    }).join('<span style="color:var(--t3);margin:0 2px">⋈</span>');
+    metaHTML = '<div class="uc-meta" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px">' +
+      '<span class="join-type-badge join-outer" style="font-size:10px">chain join</span>' + chainLabel + '</div>';
+    const keyParts = rec.chain_steps.map(s =>
+      '<span class="fe-col-tag">' + s.left_key + '</span>' +
+      (s.left_key !== s.right_key ? '<span style="color:var(--t3)">→</span><span class="fe-col-tag">' + s.right_key + '</span>' : '')
+    ).join('<span style="color:var(--t3);margin:0 3px">·</span>');
+    keyHTML = '<div style="display:flex;align-items:center;gap:6px;margin-top:.625rem;flex-wrap:wrap">' +
+      '<span style="font-size:11px;color:var(--t3)">Join keys:</span>' + keyParts + '</div>';
+  } else {
+    const joinCls = { inner: 'join-inner', left: 'join-left', right: 'join-right', outer: 'join-outer' }[rec.join_type] || 'join-inner';
+    metaHTML = '<div class="uc-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">' +
+      '<span class="join-type-badge ' + joinCls + '">' + rec.join_type + '</span>' +
+      '<span>' + rec.left_file + ' ⋊ ' + rec.right_file + '</span></div>';
+    keyHTML = '<div style="display:flex;align-items:center;gap:8px;margin-top:.625rem;flex-wrap:wrap">' +
+      '<span style="font-size:11px;color:var(--t3)">Join key:</span>' +
+      '<span class="fe-col-tag">' + rec.left_key + '</span>' +
+      (rec.left_key !== rec.right_key
+        ? '<span style="color:var(--t3)">→</span><span class="fe-col-tag">' + rec.right_key + '</span>'
+        : '') +
+      '</div>';
+  }
+
+  return '<div class="uc-card" onclick="selectJoin(this,' + idx + ')">' +
+    '<div class="check-icon"><svg viewBox="0 0 12 10"><polyline points="1,5 4,8 11,1"/></svg></div>' +
+    '<div class="uc-top">' +
+      '<div><div class="uc-title">' + rec.title + '</div>' + metaHTML + '</div>' +
+      '<span class="pill ' + confCls + '"><span class="pill-dot"></span>' + rec.confidence + ' confidence</span>' +
+    '</div>' +
+    '<div class="uc-desc" style="margin-top:.75rem">' + rec.rationale + '</div>' +
+    keyHTML +
+    '<div class="uc-reasons">' +
+      (rec.join_type_reason ? '<div class="reason-row"><span class="reason-key">Join type rationale</span><span class="reason-val">' + rec.join_type_reason + '</span></div>' : '') +
+      (rec.expected_rows    ? '<div class="reason-row"><span class="reason-key">Expected rows</span><span class="reason-val">' + rec.expected_rows + '</span></div>' : '') +
+      (rec.use_case_hint    ? '<div class="reason-row"><span class="reason-key">ML opportunity</span><span class="reason-val">' + rec.use_case_hint + '</span></div>' : '') +
+      (rec.confidence_reason? '<div class="reason-row"><span class="reason-key">Confidence note</span><span class="reason-val">' + rec.confidence_reason + '</span></div>' : '') +
+    '</div></div>';
+}
+
+function selectJoin(el, idx) {
+  document.querySelectorAll('#join-recs-grid .uc-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  S.selectedJoin = S.joinRecs[idx];
+  $('apply-join-btn').disabled = false;
+}
+
+function skipJoin() { showUploadState(); analyseSingleFile(S.files[0]); }
+
+async function loadJoinRecs() {
+  let res;
+  try {
+    res = await fetch('/api/recommend_joins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profiles: S.profiles }),
+    });
+  } catch(e) { showUploadState(); showErr('Server error during join analysis.'); return; }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    showUploadState(); showErr('Join analysis error: ' + err.detail); return;
+  }
+  const data = await res.json();
+  S.joinRecs = data.recommendations || [];
+  hide('join-spinner');
+  if (data.summary) { $('join-summary-text').textContent = data.summary; show('join-summary-box'); }
+  $('join-recs-grid').innerHTML = S.joinRecs.map((r, i) => joinCardHTML(r, i)).join('');
+  show('join-recs-container');
+}
+
+$('apply-join-btn').addEventListener('click', applyJoinAndAnalyse);
+
+async function applyJoinAndAnalyse() {
+  if (!S.selectedJoin) return;
+  const spec = S.selectedJoin;
+  S.colDesc = $('col-desc').value.trim();
+  setStage(2); hide('analyse-continue-row');
+  $('ai-text').innerHTML = '<span class="cursor"></span>';
+  $('ai-status').textContent = 'Merging datasets…';
+
+  const fd = new FormData();
+  S.files.forEach(f => fd.append('files', f));
+  fd.append('join_spec', JSON.stringify(spec));
+
+  let mRes;
+  try { mRes = await fetch('/api/merge_and_profile', { method: 'POST', body: fd }); }
+  catch(e) { showErr('Cannot reach server.'); return; }
+  if (!mRes.ok) {
+    const err = await mRes.json().catch(() => ({ detail: mRes.statusText }));
+    showErr('Merge error: ' + err.detail); return;
+  }
+  const { profile, quality_report: qr } = await mRes.json();
+  S.profile = profile;
+  S.filename = profile.filename || (spec.left_file + ' ⋊ ' + spec.right_file);
+  $('sbi-file').textContent = S.filename;
+  $('sbi-dims').textContent = profile.overview.total_rows.toLocaleString() + ' rows × ' + profile.overview.total_cols + ' cols';
+  show('sbi'); renderStats(profile.overview); renderColTable(profile.columns);
+  if (qr) { renderQualityReport(qr); show('qr-panel'); }
+  await runAIAnalysis();
+}
+
+async function analyseSingleFile(file) {
+  S.colDesc = $('col-desc').value.trim();
+  S.filename = file.name; hideErr();
+  setStage(2); hide('analyse-continue-row');
+  $('ai-text').innerHTML = '<span class="cursor"></span>';
+  $('ai-status').textContent = 'Profiling dataset…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('col_descriptions', S.colDesc);
+
+  let pRes;
+  try { pRes = await fetch('/api/profile', { method: 'POST', body: fd }); }
+  catch(e) { showErr('Cannot reach server. Is uvicorn running on port 8000?'); return; }
+  if (!pRes.ok) {
+    const err = await pRes.json().catch(() => ({ detail: pRes.statusText }));
+    showErr('Profile error: ' + err.detail); return;
+  }
+  const { profile } = await pRes.json();
+  S.profile = profile;
+  $('sbi-file').textContent = S.filename;
+  $('sbi-dims').textContent = profile.overview.total_rows.toLocaleString() + ' rows × ' + profile.overview.total_cols + ' cols';
+  show('sbi'); renderStats(profile.overview); renderColTable(profile.columns);
+  fetchQualityReport(file);
+  await runAIAnalysis();
+}
+
+async function runAIAnalysis() {
+  $('ai-status').textContent = 'AI is analysing…';
+  let aRes;
+  try {
+    aRes = await fetch('/api/analyse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: S.profile, col_descriptions: S.colDesc }),
+    });
+  } catch(e) { showErr('Server error during analysis.'); return; }
+  if (!aRes.ok) {
+    const err = await aRes.json().catch(() => ({ detail: aRes.statusText }));
+    showErr('Analysis error: ' + err.detail); return;
+  }
+  S.analysis = await aRes.json();
+  const summary = 'Domain: ' + S.analysis.domain + '\n' + S.analysis.domain_reason + '\n\n' + S.analysis.summary;
+  await typeText('ai-text', summary);
+  $('ai-status').textContent = 'Done';
+  $('domain-badge-3').textContent = '🏷 ' + S.analysis.domain;
+  $('domain-reason-3').textContent = S.analysis.domain_reason;
+  renderUCGrid('uc-grid', S.analysis.usecases, false);
+  show('analyse-continue-row');
+  fetch('/api/biz_questions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile: S.profile, analysis: S.analysis }),
+  }).then(r => r.ok ? r.json() : null).then(q => { if (q) S.bizQuestions = q; }).catch(() => {});
+}
+
+// ── Analyse button — branches on single vs. multiple files ────────────────────
+$('analyse-btn').addEventListener('click', async () => {
+  if (S.files.length === 0) { showErr('No files selected.'); return; }
+  if (S.files.length === 1) {
+    await analyseSingleFile(S.files[0]);
+  } else {
+    hideErr(); S.colDesc = $('col-desc').value.trim();
+    showJoinState();
+    const fd = new FormData();
+    S.files.forEach(f => fd.append('files', f));
+    let pRes;
+    try { pRes = await fetch('/api/profile_multi', { method: 'POST', body: fd }); }
+    catch(e) { showUploadState(); showErr('Cannot reach server.'); return; }
+    if (!pRes.ok) {
+      const err = await pRes.json().catch(() => ({ detail: pRes.statusText }));
+      showUploadState(); showErr('Profile error: ' + err.detail); return;
+    }
+    const { profiles } = await pRes.json();
+    S.profiles = profiles;
+    await loadJoinRecs();
+  }
+});
+
+// ── Apply tailored questions to the business context form ─────────────────────
+function applyBizQuestions() {
+  const q = S.bizQuestions;
+  if (!q || !q.questions || q.questions.length < 4) return;
+  if (q.intro) $('biz-agent-msg-text').textContent = q.intro;
+  const ids = ['bq-1','bq-2','bq-3','bq-4'];
+  const labels = ['bq-label-1','bq-label-2','bq-label-3','bq-label-4'];
+  q.questions.forEach((qq, i) => {
+    if (qq.label)       $(labels[i]).textContent = qq.label;
+    if (qq.placeholder) $(ids[i]).placeholder    = qq.placeholder;
+  });
+}
+
+// ── Continue to stage 3 ───────────────────────────────────────────────────────
+$('to-usecase-btn').addEventListener('click', () => {
+  applyBizQuestions();
+  setStage(3);
+  show('stage-3-questions');
+  hide('stage-3-usecases');
+});
+
+// ── Go to code page (shows FE selection first) ────────────────────────────────
+$('generate-btn').addEventListener('click', () => {
+  setStage(4);
+  hide('code-spinner');
+  hide('code-ready');
+  $('code-title').textContent = S.selectedUC.title;
+  $('code-sub').textContent = S.selectedUC.type + ' · ' + S.selectedUC.algorithm;
+  $('fe-panel-sub').textContent = S.selectedUC.title;
+  show('code-fe-select');
+});
+
+// ── Run actual code generation (triggered from stage 4) ───────────────────────
+async function runCodeGen() {
+  hide('code-fe-select');
+  show('code-spinner');
+  const fname = S.selectedUC.title.toLowerCase().replace(/\s+/g, '_') + '_starter.py';
+  $('code-fname').textContent = fname;
+
+  let cRes;
+  try {
+    cRes = await fetch('/api/generate_code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        usecase: S.selectedUC,
+        profile: S.profile,
+        col_descriptions: S.colDesc,
+        fe_recs: (S.feRecs || []).filter(r => r.selected),
+      }),
+    });
+  } catch (e) {
+    showErr('Server error during code generation.');
+    show('code-fe-select'); hide('code-spinner'); return;
+  }
+  if (!cRes.ok) {
+    const err = await cRes.json().catch(() => ({ detail: cRes.statusText }));
+    showErr('Code gen error: ' + err.detail);
+    show('code-fe-select'); hide('code-spinner'); return;
+  }
+  const { code } = await cRes.json();
+  S.code = code;
+
+  hide('code-spinner');
+  $('code-out').textContent = code;
+  $('code-lines').textContent = '~' + code.split('\n').length + ' lines';
+  show('code-ready');
+  $('insights-btn').disabled = false;
+
+  $('dl-btn').onclick = () => {
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([code], { type: 'text/x-python' })),
+      download: fname,
+    });
+    a.click();
+  };
+
+  $('nb-btn').onclick = async () => {
+    const btn = $('nb-btn');
+    btn.textContent = '⏳ Generating…'; btn.disabled = true;
+    try {
+      const r = await fetch('/api/export_notebook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: S.code, title: S.selectedUC.title, usecase: S.selectedUC }),
+      });
+      if (!r.ok) { showErr('Notebook export failed.'); return; }
+      const blob = await r.blob();
+      const nbFname = S.selectedUC.title.toLowerCase().replace(/\s+/g, '_') + '_starter.ipynb';
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(blob), download: nbFname,
+      });
+      a.click();
+      btn.textContent = '✓ Downloaded!';
+      setTimeout(() => { btn.textContent = '📓 Download .ipynb'; btn.disabled = false; }, 2500);
+    } catch(e) { showErr('Notebook export error: ' + e.message); btn.textContent = '📓 Download .ipynb'; btn.disabled = false; }
+  };
+
+  $('copy-btn').onclick = () => {
+    navigator.clipboard.writeText(code);
+    $('copy-btn').textContent = '✓ copied!';
+    $('copy-btn').classList.add('ok');
+    setTimeout(() => { $('copy-btn').textContent = 'copy code'; $('copy-btn').classList.remove('ok'); }, 2200);
+  };
+}
+
+$('run-codegen-btn').addEventListener('click', runCodeGen);
+
+// ── Feature engineering helpers ───────────────────────────────────────────────
+function resetFEPanel() {
+  S.feRecs = null;
+  hide('fe-header-actions');
+  hide('fe-content');
+  show('fe-spinner');
+  $('run-codegen-btn').textContent = 'Generate code →';
+}
+
+function goToUseCaseSlide(showQuestions) {
+  setStage(3);
+  resetFEPanel();
+  if (showQuestions) {
+    show('stage-3-questions');
+    hide('stage-3-usecases');
+  } else {
+    hide('stage-3-questions');
+    show('stage-3-usecases');
+    show('stage-3-main-content');
+    hide('uc-refine-spinner');
+  }
+}
+
+async function refineWithContext() {
+  const businessContext = {
+    goal:         $('bq-1').value.trim(),
+    stakeholders: $('bq-2').value.trim(),
+    pain_point:   $('bq-3').value.trim(),
+    constraints:  $('bq-4').value.trim(),
+  };
+  S.businessContext = businessContext;
+
+  const hasContext = Object.values(businessContext).some(v => v.length > 0);
+
+  hide('stage-3-questions');
+  show('stage-3-usecases');
+
+  if (!hasContext) {
+    // No context given — show existing analysis results
+    $('domain-badge-3').textContent = '🏷 ' + S.analysis.domain;
+    $('domain-reason-3').textContent = S.analysis.domain_reason;
+    $('uc-sub').textContent = 'Pick the ML use case you\'d like to build.';
+    renderUCGrid('uc-grid', S.analysis.usecases, false);
+    resetFEPanel();
+    show('stage-3-main-content');
+    return;
+  }
+
+  // Re-run analysis tailored to business context
+  show('uc-refine-spinner');
+  hide('stage-3-main-content');
+  $('generate-btn').disabled = true;
+
+  let refinedAnalysis = null;
+  try {
+    const aRes = await fetch('/api/analyse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: S.profile, col_descriptions: S.colDesc, business_context: businessContext }),
+    });
+    if (aRes.ok) {
+      refinedAnalysis = await aRes.json();
+    } else {
+      const err = await aRes.json().catch(() => ({ detail: aRes.statusText }));
+      showErr('Refinement error: ' + err.detail);
+    }
+  } catch(e) {
+    showErr('Server error during refinement.');
+  }
+
+  const result = refinedAnalysis || S.analysis;
+  if (refinedAnalysis) S.analysis = refinedAnalysis;
+
+  $('domain-badge-3').textContent = '🏷 ' + result.domain;
+  $('domain-reason-3').textContent = result.domain_reason;
+  $('uc-sub').textContent = hasContext
+    ? 'Use cases tailored to your business context — click one to select.'
+    : 'Pick the ML use case you\'d like to build.';
+  renderUCGrid('uc-grid', result.usecases, false);
+  resetFEPanel();
+
+  hide('uc-refine-spinner');
+  show('stage-3-main-content');
+}
+
+$('refine-btn').addEventListener('click', refineWithContext);
+
+$('skip-ctx-btn').addEventListener('click', () => {
+  S.businessContext = {};
+  hide('stage-3-questions');
+  show('stage-3-usecases');
+  $('domain-badge-3').textContent = '🏷 ' + S.analysis.domain;
+  $('domain-reason-3').textContent = S.analysis.domain_reason;
+  $('uc-sub').textContent = 'Pick the ML use case you\'d like to build.';
+  renderUCGrid('uc-grid', S.analysis.usecases, false);
+  resetFEPanel();
+  show('stage-3-main-content');
+  hide('uc-refine-spinner');
+});
+
+// ── Renderers ─────────────────────────────────────────────────────────────────
+function renderStats(ov) {
+  const items = [['Total rows', ov.total_rows.toLocaleString()], ['Columns', ov.total_cols], ['Null rate', ov.null_rate_pct + '%'], ['Duplicates', ov.duplicate_rows], ['Size', ov.memory_kb + ' KB']];
+  $('stats-grid').innerHTML = items.map(([l, v]) => `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-val">${v}</div></div>`).join('');
+}
+
+function renderColTable(cols) {
+  $('col-tbody').innerHTML = cols.map(c => {
+    const sample = (c.sample || []).slice(0, 4).join(', ');
+    const isNum  = c.type === 'numeric';
+    const uniqueCell = isNum
+      ? `<td style="color:var(--t3);text-align:center">—</td>`
+      : `<td style="color:var(--t2)">${c.unique}</td>`;
+    const meanCell = isNum
+      ? `<td style="color:var(--t2);font-family:var(--mono)">${c.mean != null ? Number(c.mean).toLocaleString(undefined, {maximumFractionDigits: 2}) : '—'}</td>`
+      : `<td style="color:var(--t3);text-align:center">—</td>`;
+    return `<tr>
+      <td style="font-weight:500;color:var(--t1)">${c.name}</td>
+      <td><span class="type-badge type-${c.type}">${c.type}</span></td>
+      <td><div class="null-bar-wrap"><div class="null-bar"><div class="null-fill" style="width:${Math.min(c.null_pct,100)}%"></div></div><span>${c.null_pct}%</span></div></td>
+      ${uniqueCell}
+      ${meanCell}
+      <td style="color:var(--t3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sample}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pillHTML(label, val) {
+  const cls = val === 'High' ? 'high' : val === 'Medium' ? 'mid' : 'low';
+  return `<span class="pill ${cls}"><span class="pill-dot"></span>${label}: ${val}</span>`;
+}
+
+function ucCardHTML(uc, idx, locked) {
+  return `
+  <div class="uc-card${locked ? ' selected' : ''}" ${locked ? '' : `onclick="selectUC(this,${idx})"`}>
+    <div class="check-icon"><svg viewBox="0 0 12 10"><polyline points="1,5 4,8 11,1"/></svg></div>
+    <div class="uc-top">
+      <div><div class="uc-title">${uc.title}</div><div class="uc-meta">${uc.type} · ${uc.algorithm}</div></div>
+      <span class="uc-score">Score: ${uc.score}/100</span>
+    </div>
+    <div class="uc-desc">${uc.business_context}</div>
+    <div class="uc-pills">
+      ${pillHTML('Data readiness', uc.data_readiness)}
+      ${pillHTML('Ease', uc.ease_of_implementation)}
+      ${pillHTML('Business impact', uc.business_importance)}
+    </div>
+    <div class="uc-reasons">
+      ${uc.data_readiness_reason ? `<div class="reason-row"><span class="reason-key">Data readiness</span><span class="reason-val">${uc.data_readiness_reason}</span></div>` : ''}
+      ${uc.ease_reason ? `<div class="reason-row"><span class="reason-key">Ease</span><span class="reason-val">${uc.ease_reason}</span></div>` : ''}
+      ${uc.importance_reason ? `<div class="reason-row"><span class="reason-key">Business impact</span><span class="reason-val">${uc.importance_reason}</span></div>` : ''}
+      ${uc.target_column ? `<div class="reason-row"><span class="reason-key">Target column</span><span class="reason-val">${uc.target_column}</span></div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderUCGrid(containerId, usecases, locked) {
+  $(containerId).innerHTML = usecases.map((uc, i) => ucCardHTML(uc, i, locked)).join('');
+}
+
+function selectUC(el, idx) {
+  document.querySelectorAll('#uc-grid .uc-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  S.selectedUC = S.analysis.usecases[idx];
+  S.insights = null;
+  $('generate-btn').disabled = false;
+  $('insights-btn').disabled = true;
+  fetchFeatureEngineering();
+}
+
+function fetchFeatureEngineering() {
+  // Fire silently in background — results populate stage 4 panel when ready
+  S.feRecs = null;
+  hide('fe-content');
+  hide('fe-header-actions');
+  show('fe-spinner');
+
+  fetch('/api/feature_engineering', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usecase: S.selectedUC, profile: S.profile, col_descriptions: S.colDesc }),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(r))
+    .then(data => renderFeatureEngineering(data))
+    .catch(() => {
+      hide('fe-spinner');
+      $('fe-recs').innerHTML = '<p style="color:var(--t3);font-size:12px">Could not load recommendations.</p>';
+      show('fe-content');
+    });
+}
+
+function feTypeBadge(type) {
+  const cls = { 'Transform': 'transform', 'New Feature': 'new-feature', 'Encoding': 'encoding', 'Imputation': 'imputation', 'Interaction': 'interaction' }[type] || 'transform';
+  return `<span class="fe-type-badge ${cls}">${type}</span>`;
+}
+
+function renderFeatureEngineering(data) {
+  hide('fe-spinner');
+  S.feRecs = (data.recommendations || []).map(r => ({ ...r, selected: true }));
+  $('fe-summary').textContent = data.summary || '';
+  renderFeRecs();
+  show('fe-content');
+  show('fe-header-actions');
+  updateRunCodegenBtn();
+}
+
+function renderFeRecs() {
+  $('fe-recs').innerHTML = (S.feRecs || []).map((rec, i) => {
+    const cols = (rec.columns || []).map(c => `<span class="fe-col-tag">${c}</span>`).join('');
+    const impactCls = rec.impact === 'High' ? 'high' : rec.impact === 'Medium' ? 'mid' : 'low';
+    return `
+    <div class="fe-rec${rec.selected ? ' selected' : ''}" onclick="toggleFERec(${i})">
+      <div class="fe-rec-top">
+        <div class="fe-check"><svg viewBox="0 0 10 8" fill="none" stroke="white" stroke-width="1.8"><polyline points="1,4 3.5,6.5 9,1"/></svg></div>
+        ${feTypeBadge(rec.type)}
+        <div class="fe-col-tags">${cols}</div>
+        <span class="pill ${impactCls}" style="margin-left:auto"><span class="pill-dot"></span>${rec.impact} impact</span>
+      </div>
+      <div class="fe-rec-title">${rec.title}</div>
+      <p class="fe-rec-rationale">${rec.rationale}</p>
+      <div class="fe-code-wrap">
+        <pre class="fe-code">${rec.code}</pre>
+        <button class="fe-copy-btn" onclick="event.stopPropagation();navigator.clipboard.writeText(this.previousElementSibling.textContent)">copy</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleFERec(i) {
+  S.feRecs[i].selected = !S.feRecs[i].selected;
+  renderFeRecs();
+  updateRunCodegenBtn();
+}
+
+function setAllFERecs(val) {
+  (S.feRecs || []).forEach(r => r.selected = val);
+  renderFeRecs();
+  updateRunCodegenBtn();
+}
+
+function updateRunCodegenBtn() {
+  const selected = (S.feRecs || []).filter(r => r.selected);
+  const total = (S.feRecs || []).length;
+  $('fe-sel-count').textContent = `${selected.length} of ${total} selected`;
+  $('run-codegen-btn').textContent = selected.length > 0
+    ? `Generate code with ${selected.length} FE step${selected.length !== 1 ? 's' : ''} →`
+    : 'Generate code (no FE) →';
+}
+
+// ── Typewriter ────────────────────────────────────────────────────────────────
+function typeText(id, text) {
+  const el = $(id);
+  el.innerHTML = '';
+  let i = 0;
+  return new Promise(res => {
+    const t = setInterval(() => {
+      if (i >= text.length) { clearInterval(t); el.innerHTML = text.replace(/\n/g, '<br>'); res(); return; }
+      el.innerHTML = text.slice(0, i + 1).replace(/\n/g, '<br>') + '<span class="cursor"></span>';
+      i += 4;
+    }, 16);
+  });
+}
+
+// ── Error helpers ─────────────────────────────────────────────────────────────
+function showErr(msg) {
+  const b = $('error-banner');
+  b.textContent = '⚠ ' + msg;
+  b.style.display = 'block';
+}
+function hideErr() {
+  $('error-banner').style.display = 'none';
+}
+
+// ── Quality Report ────────────────────────────────────────────────────────────
+let _qrCollapsed = false;
+
+async function fetchQualityReport(file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/quality_report', { method: 'POST', body: fd });
+    if (!r.ok) return;
+    const report = await r.json();
+    renderQualityReport(report);
+    show('qr-panel');
+  } catch(e) { console.warn('Quality report error:', e); }
+}
+
+function renderQualityReport(report) {
+  const gradeEl  = $('qr-grade-badge');
+  const scorePct = report.score;
+  const grade    = report.grade;
+  const label    = report.grade_label;
+
+  gradeEl.className = 'qr-grade grade-' + grade;
+  $('qr-grade-letter').textContent = grade;
+  $('qr-grade-lbl').textContent    = label;
+
+  const inlineBadge = $('qr-grade-inline');
+  inlineBadge.textContent = `${grade} · ${scorePct}/100`;
+  const gc = grade==='A'?'var(--green)':grade==='B'?'var(--accent)':grade==='C'?'var(--amber)':'var(--red)';
+  const gb = grade==='A'?'rgba(52,211,153,0.12)':grade==='B'?'rgba(99,102,241,0.12)':grade==='C'?'rgba(251,191,36,0.12)':'rgba(248,113,113,0.12)';
+  inlineBadge.style.cssText = `color:${gc};background:${gb};border:1px solid ${gc};border-radius:99px;padding:2px 8px;font-size:11px;font-family:var(--mono)`;
+
+  $('qr-toggle-label').textContent = `Data Quality Report — ${report.total_warnings} warning${report.total_warnings!==1?'s':''}`;
+
+  $('qr-score-txt').textContent = `Quality Score: ${scorePct} / 100`;
+  const bar = $('qr-score-bar');
+  bar.style.width      = scorePct + '%';
+  bar.style.background = grade==='A'?'var(--green)':grade==='B'?'var(--accent)':grade==='C'?'var(--amber)':'var(--red)';
+
+  const sc = report.severity_counts;
+  const pills = [];
+  if (sc.high)   pills.push(`<span class="sev-pill sev-high">⚠ ${sc.high} high</span>`);
+  if (sc.medium) pills.push(`<span class="sev-pill sev-medium">◆ ${sc.medium} medium</span>`);
+  if (!sc.high && !sc.medium) pills.push(`<span class="sev-pill sev-none">✓ No critical issues</span>`);
+  $('qr-counts').innerHTML = pills.join('');
+
+  const list = $('qr-warning-list');
+  if (!report.warnings.length) {
+    list.innerHTML = '<div class="qr-empty">✅ No data quality issues detected — great foundation for modelling!</div>';
+    return;
+  }
+  list.innerHTML = report.warnings.map(w => `
+    <div class="qr-warn-card qr-warn-${w.severity}">
+      <div class="qr-warn-top">
+        <span class="qr-warn-cat">${w.category}</span>
+        <span style="color:var(--t3)">·</span>
+        <span class="qr-warn-col">${w.column}</span>
+        <span class="sev-pill sev-${w.severity}" style="margin-left:auto;font-size:10px">${w.severity}</span>
+      </div>
+      <div class="qr-warn-msg">${w.message}</div>
+      <div class="qr-warn-fix">💡 ${w.fix}</div>
+    </div>`).join('');
+}
+
+function toggleQR() {
+  _qrCollapsed = !_qrCollapsed;
+  $('qr-body').style.display  = _qrCollapsed ? 'none' : 'block';
+  $('qr-toggle-icon').textContent = _qrCollapsed ? '▶' : '▼';
+}
+
+// ── Insights ─────────────────────────────────────────────────────────────────
+$('insights-btn').addEventListener('click', async () => {
+  setStage(5);
+  $('insights-sub').textContent = S.selectedUC.type + ' · ' + S.selectedUC.algorithm;
+
+  if (S.insights) {
+    renderInsights(S.insights);
+    return;
+  }
+
+  hide('insights-ready');
+  show('insights-spinner');
+
+  let iRes;
+  try {
+    iRes = await fetch('/api/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usecase: S.selectedUC, profile: S.profile, col_descriptions: S.colDesc }),
+    });
+  } catch (e) {
+    showErr('Server error during insights generation.'); return;
+  }
+  if (!iRes.ok) {
+    const err = await iRes.json().catch(() => ({ detail: iRes.statusText }));
+    showErr('Insights error: ' + err.detail); return;
+  }
+  S.insights = await iRes.json();
+  hide('insights-spinner');
+  renderInsights(S.insights);
+});
+
+function renderInsights(ins) {
+  renderNextSteps(ins.next_steps || []);
+  renderProfilingReport(ins.profiling_report || {});
+  renderAltModels(ins.alt_models || []);
+  show('insights-ready');
+}
+
+function renderNextSteps(steps) {
+  $('ns-list').innerHTML = steps.map(s => {
+    const priCls = s.priority === 'High' ? 'sev-high' : s.priority === 'Medium' ? 'sev-medium' : 'sev-none';
+    return `
+    <div class="ns-item">
+      <div class="ns-left">
+        <span class="ns-phase ns-phase-${s.phase}">${s.phase}</span>
+        <span class="sev-pill ${priCls}" style="font-size:9px">${s.priority}</span>
+      </div>
+      <div class="ns-body">
+        <div class="ns-title">${s.title}</div>
+        <div class="ns-detail">${s.detail}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderProfilingReport(report) {
+  $('profiling-section-label').textContent = report.title || 'Output Profile';
+  $('profiling-desc-box').innerHTML =
+    `<div class="ai-header"><span class="ai-chip">Profile</span></div>` +
+    `<div class="ai-text">${(report.description || '').replace(/\n/g, '<br>')}</div>`;
+  $('profiling-grid').innerHTML = (report.profiles || []).map(p => `
+    <div class="profile-card">
+      <div class="profile-label">${p.label}</div>
+      <div class="profile-desc">${p.description}</div>
+      <ul class="profile-chars">${(p.characteristics || []).map(c => `<li>${c}</li>`).join('')}</ul>
+    </div>`).join('');
+}
+
+function lvlBadge(val) {
+  const cls = 'lvl lvl-' + (val || 'medium').toLowerCase();
+  return `<span class="${cls}">${val || '—'}</span>`;
+}
+
+function renderAltModels(models) {
+  $('alt-tbl-body').innerHTML = models.map(m => `
+    <tr>
+      <td style="font-weight:500;color:var(--t1)">${m.algorithm}</td>
+      <td>${lvlBadge(m.complexity)}</td>
+      <td>${lvlBadge(m.speed)}</td>
+      <td>${lvlBadge(m.interpretability)}</td>
+      <td>${lvlBadge(m.expected_accuracy)}</td>
+      <td style="color:var(--t2);font-size:12px;max-width:200px;white-space:normal">${m.when_to_use || ''}</td>
+    </tr>`).join('');
+
+  $('alt-cards-list').innerHTML = models.map(m => `
+    <div class="alt-card">
+      <div class="alt-alg-header">
+        <span class="alt-alg-name">${m.algorithm}</span>
+        <div style="display:flex;gap:6px">${lvlBadge(m.complexity)}${lvlBadge(m.speed)}</div>
+      </div>
+      <div class="alt-vs">${m.vs_chosen || ''}</div>
+      <div class="pros-cons">
+        <div class="pc-pros">
+          <div class="pc-label">Pros</div>
+          <ul class="pc-list">${(m.pros || []).map(p => `<li>${p}</li>`).join('')}</ul>
+        </div>
+        <div class="pc-cons">
+          <div class="pc-label">Cons</div>
+          <ul class="pc-list">${(m.cons || []).map(c => `<li>${c}</li>`).join('')}</ul>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// Init
+setStage(1);
+</script>
+</body>
+</html>
