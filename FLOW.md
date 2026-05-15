@@ -1,68 +1,95 @@
-# Application Flow — ML Use Case Recommender
+# Application Flow — CASEbook ML Use Case Recommender
 
 ## Overview
 
-The application is a 5-step wizard that takes a raw CSV file and walks the user through dataset profiling, AI-powered ML use case discovery, starter code generation, and post-modelling guidance.
+The application is a wizard that takes one or more CSV files and walks the user through dataset profiling, optional join merging, AI-powered ML use case discovery, feature engineering, starter code generation, and post-modelling guidance.
 
+### Single file path
 ```
-User uploads CSV
-      │
-      ▼
-┌─────────────┐    ┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  Stage 1    │───▶│  Stage 2    │───▶│   Stage 3    │───▶│   Stage 4    │───▶│   Stage 5    │
-│   Upload    │    │  Analysis   │    │ Select Use   │    │ Starter Code │    │  Insights    │
-│             │    │             │    │    Case      │    │              │    │              │
-└─────────────┘    └─────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-  Local only      Local + Bedrock       User choice         Bedrock             Bedrock
+Upload CSV → AI Analysis → Business Context → Select Use Case → Feature Engineering → Starter Code → Insights
+```
+
+### Multi-file path
+```
+Upload CSVs → Join Recommendations → Apply Join → AI Analysis → Business Context → Select Use Case → Feature Engineering → Starter Code → Insights
 ```
 
 ---
 
 ## Stage 1 — Upload Dataset
 
-**What the user does:** Drops or browses for a CSV file. Optionally adds plain-text descriptions of columns to give the AI more context.
+**What the user does:** Drops or browses for one or more CSV files. Optionally adds plain-text descriptions of columns.
 
-**What happens locally (no server call yet):**
-- File is held in the browser's `FileList` — nothing is sent until the user clicks **Analyse Dataset**
-- The "Analyse Dataset" button is disabled until a valid `.csv` file is selected
+- File(s) are held in the browser's `FileList` — nothing is sent until the user clicks **Analyse Dataset**
+- If a single file is uploaded, the wizard proceeds directly to Stage 2 (AI Analysis)
+- If two or more files are uploaded, the wizard first routes through Stage 1b (Join Recommendations)
 
-**Inputs to next stage:**
-- The raw CSV file (binary)
-- Optional free-text column descriptions
+---
+
+## Stage 1b — Join Recommendations *(multi-file only)*
+
+### Multi-file profiling — `POST /api/profile_multi`
+
+All uploaded CSVs are sent in one multipart request. The server parses each with pandas and returns a statistical profile per file (same structure as the single-file `/api/profile` response, plus a `filename` field).
+
+### Join recommendation — `POST /api/recommend_joins`
+
+```
+Browser                    server.py              ai_analyst.py              AWS Bedrock
+   │                           │                       │                          │
+   │── { profiles[] } ────────▶│                       │                          │
+   │                           │── recommend_joins() ──▶│                          │
+   │                           │                       │── build prompt:          │
+   │                           │                       │   schema summary per file│
+   │                           │                       │   + chain join rules     │
+   │                           │                       │   (when 3+ files)        │
+   │                           │                       │                          │
+   │                           │                       │── invoke_model() ────────▶│
+   │                           │                       │◀── raw JSON ──────────────│
+   │                           │                       │── _parse_json()          │
+   │◀── { summary,            │◀── parsed dict ────────│
+   │     recommendations[] } ──│
+```
+
+Each recommendation includes:
+- `left_file`, `right_file`, `left_key`, `right_key`, `join_type` — for a standard pairwise join
+- `chain_steps[]` — for a multi-table chain join (3+ files); each step specifies which files and keys to join sequentially; `__result__` is used as `left_file` for steps after the first
+
+When 3+ files are uploaded, the AI always includes at least one chain-join recommendation that merges all datasets.
+
+**Rendered in the UI:** Clickable join cards. Pairwise cards show the two files and join badge. Chain-join cards show the full sequence of files and per-step join types with a "chain join" badge.
+
+### Applying the join — `POST /api/merge_and_profile`
+
+```
+Browser                    server.py
+   │                           │
+   │── FormData(files[],       │
+   │   join_spec JSON) ────────▶│
+   │                           │── if chain_steps present:
+   │                           │     apply steps sequentially,
+   │                           │     passing result of each step
+   │                           │     as left DataFrame for the next
+   │                           │── else:
+   │                           │     standard pandas merge (two files)
+   │                           │
+   │                           │── profile_dataset(merged_df)
+   │                           │── quality_report(merged_df, profile)
+   │◀── { profile, quality_   │
+   │     report } ─────────────│
+```
+
+The merged profile becomes `S.profile` for all downstream AI calls, exactly as if a single file had been uploaded.
 
 ---
 
 ## Stage 2 — AI Analysis
 
-This stage makes **two parallel calls**: one local (profile + quality) and one to Bedrock (AI analysis).
+This stage makes **two parallel calls**: one local (quality report) and one to Bedrock (AI analysis).
 
-### 2a. Dataset Profiling — `POST /api/profile`
+### 2a. Data Quality Report — `POST /api/quality_report`
 
-```
-Browser                          server.py                    data_profiler.py
-   │                                 │                               │
-   │──── FormData(file, col_desc) ──▶│                               │
-   │                                 │──── pd.read_csv(bytes) ──────▶│
-   │                                 │                               │── overview stats
-   │                                 │                               │   (rows, cols, nulls,
-   │                                 │                               │    memory, duplicates)
-   │                                 │                               │
-   │                                 │                               │── per-column stats
-   │                                 │                               │   type inference:
-   │                                 │                               │     numeric / categorical /
-   │                                 │                               │     datetime / text
-   │                                 │                               │   null%, unique count,
-   │                                 │                               │   mean/std/skew (numeric)
-   │                                 │                               │   top values (categorical)
-   │                                 │                               │
-   │◀──── { profile, col_desc } ────│◀──── profile dict ────────────│
-```
-
-The profile dict is stored in browser state (`S.profile`) and used in every subsequent Bedrock call.
-
-### 2b. Data Quality Report — `POST /api/quality_report`
-
-Runs in parallel with the AI analysis (fire-and-forget, does not block). Entirely local — no Bedrock call.
+Runs as a fire-and-forget alongside the AI analysis. Entirely local — no Bedrock call.
 
 ```
 data_profiler.quality_report(df, profile)
@@ -78,9 +105,7 @@ data_profiler.quality_report(df, profile)
 Output: score 0–100, grade A/B/C/D, list of warnings with category + severity + fix advice
 ```
 
-The quality panel is shown collapsed in the UI with the grade badge visible inline.
-
-### 2c. AI Domain Analysis — `POST /api/analyse`
+### 2b. AI Domain Analysis — `POST /api/analyse`
 
 ```
 Browser                    server.py              ai_analyst.py              AWS Bedrock
@@ -90,20 +115,17 @@ Browser                    server.py              ai_analyst.py              AWS
    │                           │                       │── build prompt:           │
    │                           │                       │   profile_to_text()       │
    │                           │                       │   + col descriptions      │
+   │                           │                       │   + business_context      │
+   │                           │                       │     (if already answered) │
    │                           │                       │                           │
    │                           │                       │── invoke_model() ────────▶│
-   │                           │                       │                          │── Claude generates
-   │                           │                       │                          │   JSON response:
-   │                           │                       │◀── raw JSON text ─────────│   domain, reason,
-   │                           │                       │                          │   summary,
-   │                           │                       │── _parse_json()           │   4–6 use cases
-   │                           │                       │   (strips markdown fences,│
-   │                           │                       │    extracts JSON object)  │
+   │                           │                       │◀── raw JSON ──────────────│
+   │                           │                       │── _parse_json()           │
    │◀── { domain, summary,    │◀── parsed dict ────────│
    │     usecases[] } ─────────│
 ```
 
-**AI prompt instructs Claude to return:**
+**AI response structure:**
 - `domain` — detected industry (E-commerce, Healthcare, Finance, etc.)
 - `domain_reason` — one sentence explaining the classification
 - `summary` — 2–3 sentence description of the dataset
@@ -112,46 +134,100 @@ Browser                    server.py              ai_analyst.py              AWS
   - `target_column`, `features[]` (only real column names)
   - `data_readiness`, `ease_of_implementation`, `business_importance` (High/Medium/Low)
   - `score` (0–100, weighted: business 40%, readiness 35%, ease 25%)
-  - Rationale fields for each rating
 
 **Rendered in the UI:**
 - Overview stat cards (rows, columns, null rate, duplicates, size)
 - Column profile table (type badge, null bar, unique count, mean, sample values)
 - Typewriter animation plays out the AI summary
-- Use case cards sorted by score, with pill badges for each rating
+- Use case cards sorted by score with pill badges
+
+---
+
+## Stage 2c — Business Context Questions
+
+After the initial analysis, the AI generates 4 dataset-specific questions to sharpen recommendations.
+
+### `POST /api/biz_questions`
+
+```
+Browser                    server.py              ai_analyst.py              AWS Bedrock
+   │                           │                       │                          │
+   │── { profile, analysis } ──▶│                       │                          │
+   │                           │── generate_biz_       │                          │
+   │                           │   questions() ────────▶│                          │
+   │                           │                       │── prompt references       │
+   │                           │                       │   actual column names,    │
+   │                           │                       │   detected domain, and    │
+   │                           │                       │   top use case titles     │
+   │                           │                       │── invoke_model() ────────▶│
+   │                           │                       │◀── raw JSON ──────────────│
+   │◀── { intro, questions[] } │◀── parsed dict ────────│
+```
+
+Returns 4 questions, each with a `label` and domain-specific `placeholder` examples. The user's answers are sent back with the next `/api/analyse` call as `business_context`, which causes the AI to re-rank use cases around the stated goal, stakeholders, pain points, and constraints.
 
 ---
 
 ## Stage 3 — Select Use Case
 
-**What the user does:** Clicks a use case card to select it. The card expands to show the rationale fields. The user clicks **Continue**.
+**What the user does:** Clicks a use case card to select it. The card expands to show rationale fields. The user clicks **Continue**.
 
 **No server call.** The selected use case object is stored in `S.selectedUC`.
 
-Selecting a different use case clears `S.insights` (the Stage 5 cache) and disables the **View Insights** button, ensuring stale insights from a previous selection are never shown.
+Selecting a different use case clears `S.insights` (the Stage 5 cache) and resets the feature engineering state.
 
 ---
 
-## Stage 4 — Starter Code
+## Stage 3b — Feature Engineering
 
-### Code generation — `POST /api/generate_code`
+### `POST /api/feature_engineering`
 
 ```
 Browser                    server.py              ai_analyst.py              AWS Bedrock
    │                           │                       │                          │
    │── { usecase, profile,    │                       │                          │
    │     col_desc } ──────────▶│                       │                          │
+   │                           │── generate_feature_  │                          │
+   │                           │   engineering() ─────▶│                          │
+   │                           │                       │── filters to only the    │
+   │                           │                       │   feature + target cols  │
+   │                           │                       │── prompt cites actual    │
+   │                           │                       │   skew, null%, cardinality│
+   │                           │                       │   values per column      │
+   │                           │                       │── invoke_model() ────────▶│
+   │                           │                       │◀── raw JSON ──────────────│
+   │◀── { summary,            │◀── parsed dict ────────│
+   │     recommendations[] } ──│
+```
+
+**Each recommendation includes:**
+- `type` — Transform | New Feature | Encoding | Imputation | Interaction
+- `columns[]` — which columns it applies to
+- `title`, `rationale` (cites actual stat values), `impact` (High/Medium/Low)
+- `code` — 1–3 line pandas snippet, runnable directly on a DataFrame named `df`
+
+**Rendered in the UI:** Selectable cards. The user picks which recommendations to apply. Selected recommendations are passed to `/api/generate_code` as `fe_recs[]` and the AI wraps them in a `feature_engineering(df)` function called before the pipeline.
+
+---
+
+## Stage 4 — Starter Code
+
+### `POST /api/generate_code`
+
+```
+Browser                    server.py              ai_analyst.py              AWS Bedrock
+   │                           │                       │                          │
+   │── { usecase, profile,    │                       │                          │
+   │     col_desc, fe_recs[] } │                       │                          │
+   │   ───────────────────────▶│                       │                          │
    │                           │── generate_starter_  │                          │
    │                           │   code() ────────────▶│                          │
-   │                           │                       │── build prompt:          │
-   │                           │                       │   use case details       │
-   │                           │                       │   + per-column stats     │
+   │                           │                       │── prompt embeds:         │
+   │                           │                       │   use case + col stats   │
    │                           │                       │   + 13 required sections │
-   │                           │                       │                          │
+   │                           │                       │   + fe_recs if selected  │
    │                           │                       │── invoke_model() ────────▶│
-   │                           │                       │                          │── Claude generates
-   │                           │                       │◀── raw Python code ───────│   complete .py script
-   │                           │                       │                          │
+   │                           │                       │◀── raw Python code ───────│
    │                           │                       │── strip markdown fences  │
    │◀── { code: "..." } ──────│◀── clean Python str ──│
 ```
@@ -160,26 +236,28 @@ Browser                    server.py              ai_analyst.py              AWS
 1. Header comment with install command
 2. All imports
 3. Configuration block (DATA_PATH, TARGET_COL, FEATURE_COLS, hyperparams)
-4. `load_data()` — read CSV, print shape/dtypes/nulls
-5. `run_eda()` — distribution plots, saved to `eda_plots.png`
-6. `build_pipeline()` — sklearn Pipeline + ColumnTransformer (imputation, encoding, scaling)
+4. Load & inspect
+5. Exploratory data analysis — plots saved to `eda_plots.png`
+6. Preprocessing pipeline — sklearn Pipeline + ColumnTransformer
 7. Train/test split (supervised only)
 8. Model training with the chosen algorithm
-9. Evaluation (type-appropriate: classification_report/ROC, RMSE/R², silhouette/elbow, anomaly scores)
-10. Feature importance plot, saved to `feature_importance.png`
+9. Evaluation (type-appropriate metrics and plots) — saved to `results.png`
+10. Feature importance plot — saved to `feature_importance.png`
 11. `predict()` function for scoring new data
 12. `joblib.dump()` to save `model.joblib`
 13. `if __name__ == '__main__':` main guard
 
+If feature engineering recommendations were selected, a `feature_engineering(df)` function is injected and called immediately after data loading.
+
 **Download options:**
 - **Download .py** — direct browser download of the raw Python file
-- **Download .ipynb** — calls `POST /api/export_notebook`, which splits the code on section-marker comments (`# ── 1.`, `# ── 2.`, etc.) and wraps each section in its own Jupyter code cell with a markdown header cell above it
+- **Download .ipynb** — calls `POST /api/export_notebook`, splits code on section-marker comments and wraps each section in its own Jupyter code cell with a markdown header above it
 
 ---
 
 ## Stage 5 — Post-Modelling Insights
 
-### Insights generation — `POST /api/insights`
+### `POST /api/insights`
 
 ```
 Browser                    server.py              ai_analyst.py              AWS Bedrock
@@ -187,14 +265,8 @@ Browser                    server.py              ai_analyst.py              AWS
    │── { usecase, profile,    │                       │                          │
    │     col_desc } ──────────▶│                       │                          │
    │                           │── generate_insights() ▶│                          │
-   │                           │                       │── build prompt:          │
-   │                           │                       │   use case + column stats│
-   │                           │                       │   + domain context       │
-   │                           │                       │                          │
    │                           │                       │── invoke_model() ────────▶│
-   │                           │                       │                          │── Claude generates
-   │                           │                       │◀── raw JSON ──────────────│   JSON response
-   │                           │                       │                          │
+   │                           │                       │◀── raw JSON ──────────────│
    │                           │                       │── _parse_json()          │
    │◀── { next_steps[],       │◀── parsed dict ────────│
    │     profiling_report{},  │
@@ -204,75 +276,83 @@ Browser                    server.py              ai_analyst.py              AWS
 **AI response structure:**
 
 ```
-next_steps[]
-  ├── phase: Validation | Deployment | Monitoring | Retraining
-  ├── title: short actionable title
-  ├── detail: 2–3 sentences referencing actual columns and domain
-  └── priority: High | Medium | Low
+next_steps[]        5–7 items
+  ├── phase:        Validation | Deployment | Monitoring | Retraining
+  ├── title, detail (references actual columns and domain)
+  └── priority:     High | Medium | Low
 
 profiling_report{}
-  ├── title: e.g. "Expected Cluster Profiles"
-  ├── description: how to interpret model output in business terms
-  └── profiles[]
-        ├── label: e.g. "Cluster 1: High-Value Loyalists"
-        ├── description: what records in this group look like
-        └── characteristics[]: specific traits using actual column names
+  ├── title, description
+  └── profiles[]   3–4 items
+        ├── label, description
+        └── characteristics[]   specific traits using actual column names
 
-alt_models[]  (exactly 3)
+alt_models[]        exactly 3
   ├── algorithm, complexity, speed, interpretability, expected_accuracy
-  ├── when_to_use: one sentence
-  ├── pros[], cons[]
-  └── vs_chosen: direct comparison to the selected algorithm
+  ├── when_to_use, pros[], cons[]
+  └── vs_chosen: direct comparison sentence
 ```
 
 **Profiling report adapts by use case type:**
 
 | Use Case Type | Profile sections |
 |---|---|
-| Classification | One card per predicted class (positive / negative / boundary cases) |
-| Regression | Three prediction bands: high / mid-range / low |
-| Clustering | 3–4 expected cluster archetypes based on feature columns |
-| Anomaly Detection | Normal pattern / Anomalous pattern / Borderline cases |
+| Classification | One card per predicted class |
+| Regression | Low / mid-range / high prediction bands |
+| Clustering | 3–4 expected cluster archetypes |
+| Anomaly Detection | Normal pattern / Anomalous / Borderline |
 
-**Insights are cached** in `S.insights`. If the user navigates back to Stage 4 and returns to Stage 5 without changing the use case, the cached result is rendered instantly. The cache is cleared whenever a new use case is selected in Stage 2.
+Insights are cached in `S.insights`. If the user navigates back and returns to Stage 5 without changing the use case, the cached result is rendered instantly.
 
 ---
 
 ## Mock Mode
 
-When `MOCK_MODE=true`, all three Bedrock functions are intercepted and replaced with local implementations in `src/mock_analyst.py`. No AWS credentials are needed.
+When `MOCK_MODE=true`, all Bedrock functions are intercepted and replaced with local implementations in `src/mock_analyst.py`. No AWS credentials are needed.
 
 | Function | Mock behaviour |
 |---|---|
-| `analyse_dataset` | Keyword-matches column names to detect domain; builds use cases from column type patterns (binary cat → classification, numeric target → regression, etc.) |
-| `generate_starter_code` | Returns a complete Python script template built via f-strings, with type-specific eval blocks |
+| `analyse_dataset` | Keyword-matches column names to detect domain; builds use cases from column type patterns |
+| `recommend_joins` | Finds common columns across files; generates pairwise + chain-join recommendations for 3+ files |
+| `generate_biz_questions` | Returns domain-aware question templates |
+| `generate_feature_engineering` | Returns stat-driven recommendations based on skew, null%, and cardinality |
+| `generate_starter_code` | Returns a complete Python script template via f-strings with type-specific eval blocks |
 | `generate_insights` | Returns pre-written next steps, profiling templates, and alt model specs per use case type |
 
-A 1–1.5 second `time.sleep()` is added to simulate network latency so the UI loading states render correctly.
+A short `time.sleep()` is added to simulate network latency so UI loading states render correctly.
 
 ---
 
 ## Data flow summary
 
 ```
-CSV file (user upload)
+CSV file(s) (user upload)
+    │
+    ├── [multi-file] /api/profile_multi   ← profile each file locally
+    │       │
+    │       └── /api/recommend_joins      → Bedrock → pairwise + chain join options
+    │               │
+    │               └── /api/merge_and_profile ← pandas merge (pairwise or chained)
     │
     ▼
-data_profiler.profile_dataset()        ← pure pandas, always local
+data_profiler.profile_dataset()           ← pure pandas, always local
     │
-    ├──▶ quality_report()              ← local scoring, shown in Stage 2
+    ├──▶ /api/quality_report              ← local scoring, shown in Stage 2
     │
     └──▶ profile dict (S.profile)
               │
-              ├──▶ /api/analyse        → Bedrock → domain + use cases  (Stage 2)
+              ├──▶ /api/analyse           → Bedrock → domain + use cases     (Stage 2)
               │
-              ├──▶ /api/generate_code  → Bedrock → Python script        (Stage 4)
+              ├──▶ /api/biz_questions     → Bedrock → context questions       (Stage 2c)
+              │
+              ├──▶ /api/feature_engineering → Bedrock → transform recs        (Stage 3b)
+              │
+              ├──▶ /api/generate_code     → Bedrock → Python script           (Stage 4)
               │         │
-              │         └──▶ /api/export_notebook → nbformat → .ipynb   (Stage 4)
+              │         └──▶ /api/export_notebook → nbformat → .ipynb
               │
-              └──▶ /api/insights       → Bedrock → next steps +          (Stage 5)
-                                                   profiling +
-                                                   alt models
+              └──▶ /api/insights          → Bedrock → next steps +            (Stage 5)
+                                                       profiling + alt models
 ```
 
-All Bedrock calls share the same `_invoke()` helper which uses `client.invoke_model()` with the Messages API format. Responses are cleaned of any markdown fences by `_parse_json()` before being returned to the frontend.
+All Bedrock calls share the same `_invoke()` helper using `invoke_model()` with the Messages API format. Responses are cleaned of markdown fences by `_parse_json()` before being returned to the frontend.
