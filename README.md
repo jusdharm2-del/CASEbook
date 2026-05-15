@@ -1,4 +1,4 @@
-# ML Use Case Recommender
+# CASEbook
 
 Beautiful web frontend + FastAPI backend powered by **AWS Bedrock** (Claude Sonnet).
 
